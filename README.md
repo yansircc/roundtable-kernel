@@ -44,23 +44,23 @@ Convergence is decided from critic findings, not from the chair's self-report.
 
 - [`cmd/rtk/main.go`](/Users/yansir/code/52/roundtable-kernel/cmd/rtk/main.go): Go CLI entrypoint
 - [`internal/rtk/kernel.go`](/Users/yansir/code/52/roundtable-kernel/internal/rtk/kernel.go): session state machine
-- [`internal/rtk/orchestrator.go`](/Users/yansir/code/52/roundtable-kernel/internal/rtk/orchestrator.go): bounded round runner
+- [`internal/rtk/orchestrator.go`](/Users/yansir/code/52/roundtable-kernel/internal/rtk/orchestrator.go): session lifecycle
+- [`internal/rtk/orchestrator_round.go`](/Users/yansir/code/52/roundtable-kernel/internal/rtk/orchestrator_round.go): bounded round runner
+- [`internal/rtk/orchestrator_phase.go`](/Users/yansir/code/52/roundtable-kernel/internal/rtk/orchestrator_phase.go): durable phase recording
 - [`internal/rtk/fixture_adapter.go`](/Users/yansir/code/52/roundtable-kernel/internal/rtk/fixture_adapter.go): fixture adapter
 - [`internal/rtk/exec_adapter.go`](/Users/yansir/code/52/roundtable-kernel/internal/rtk/exec_adapter.go): shell-command adapter for real runtimes
 - [`internal/rtk/store.go`](/Users/yansir/code/52/roundtable-kernel/internal/rtk/store.go): JSON persistence
 - [`internal/rtk/view.go`](/Users/yansir/code/52/roundtable-kernel/internal/rtk/view.go): derived read models for UI/API
 - [`internal/rtk/server.go`](/Users/yansir/code/52/roundtable-kernel/internal/rtk/server.go): HTTP API + static UI server
 - [`internal/rtk/command.go`](/Users/yansir/code/52/roundtable-kernel/internal/rtk/command.go): subprocess runner + telemetry
-- [`internal/rtk/agentlib.go`](/Users/yansir/code/52/roundtable-kernel/internal/rtk/agentlib.go): provider-wrapper prompt/schema helpers
+- [`internal/rtk/agent_prompt.go`](/Users/yansir/code/52/roundtable-kernel/internal/rtk/agent_prompt.go): wrapper prompt construction
+- [`internal/rtk/agent_schema.go`](/Users/yansir/code/52/roundtable-kernel/internal/rtk/agent_schema.go): phase output schemas
 - [`cmd/claude-agent/main.go`](/Users/yansir/code/52/roundtable-kernel/cmd/claude-agent/main.go): Go Claude CLI wrapper
 - [`cmd/codex-agent/main.go`](/Users/yansir/code/52/roundtable-kernel/cmd/codex-agent/main.go): Go Codex CLI wrapper
 - [`cmd/mock-agent/main.go`](/Users/yansir/code/52/roundtable-kernel/cmd/mock-agent/main.go): Go deterministic mock runtime
-- [`src/*.js`](/Users/yansir/code/52/roundtable-kernel/src/cli.js): legacy JS reference implementation kept for comparison during migration
 - [`fixtures/evidence-ledger.json`](/Users/yansir/code/52/roundtable-kernel/fixtures/evidence-ledger.json): 2-round semantic redesign sample
 - [`fixtures/minigit-plan.json`](/Users/yansir/code/52/roundtable-kernel/fixtures/minigit-plan.json): 3-round planning sample
 - [`fixtures/minigit-exec.json`](/Users/yansir/code/52/roundtable-kernel/fixtures/minigit-exec.json): exec-adapter sample config
-- [`examples/claude-agent.js`](/Users/yansir/code/52/roundtable-kernel/examples/claude-agent.js): Claude CLI semantic wrapper
-- [`examples/codex-agent.js`](/Users/yansir/code/52/roundtable-kernel/examples/codex-agent.js): Codex CLI semantic wrapper
 - [`examples/runtime-spec.template.json`](/Users/yansir/code/52/roundtable-kernel/examples/runtime-spec.template.json): real-runtime spec template
 - [`ui/src/App.svelte`](/Users/yansir/code/52/roundtable-kernel/ui/src/App.svelte): semantic dashboard
 
@@ -76,7 +76,7 @@ go run ./cmd/rtk show evidence-ledger
 go run ./cmd/rtk list
 go run ./cmd/rtk serve --port 3133
 npm --prefix ui install
-npm run ui:build
+npm --prefix ui run build
 ```
 
 `demo` is just a shortcut for the bundled `evidence-ledger` fixture. `run fixture` is the generic adapter entrypoint.
@@ -147,8 +147,6 @@ Two Go wrappers are included:
 
 - [`cmd/claude-agent/main.go`](/Users/yansir/code/52/roundtable-kernel/cmd/claude-agent/main.go): calls `${CLAUDE_BIN:-claude} -p --output-format json --json-schema ...` with isolated settings/MCP defaults and extracts `result.structured_output`
 - [`cmd/codex-agent/main.go`](/Users/yansir/code/52/roundtable-kernel/cmd/codex-agent/main.go): calls `codex exec --output-schema ... --output-last-message ...`
-
-The older JS wrappers remain in [`examples/`](/Users/yansir/code/52/roundtable-kernel/examples/claude-agent.js) as migration references, but the default runtime path is now Go.
 
 Both wrappers:
 

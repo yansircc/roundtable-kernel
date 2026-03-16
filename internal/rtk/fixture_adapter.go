@@ -101,13 +101,7 @@ func uniqueCritics(rounds []fixtureRound) []string {
 func toEvidenceInput(items []fixtureEvidenceItem) []EvidenceInput {
 	result := make([]EvidenceInput, 0, len(items))
 	for _, item := range items {
-		result = append(result, EvidenceInput{
-			Key:       item.Key,
-			Source:    item.Source,
-			Kind:      item.Kind,
-			Statement: item.Statement,
-			Excerpt:   item.Excerpt,
-		})
+		result = append(result, EvidenceInput(item))
 	}
 	return result
 }
