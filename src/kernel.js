@@ -24,6 +24,60 @@ function findingIndex(findings) {
   return new Map(findings.map((item) => [item.id, item]));
 }
 
+function currentRoundFindings(roundRecord) {
+  return Array.isArray(roundRecord?.findings_against_proposal)
+    ? roundRecord.findings_against_proposal
+    : Array.isArray(roundRecord?.findings)
+      ? roundRecord.findings
+      : [];
+}
+
+function ensureOpenRound(session, round) {
+  invariant(Number.isInteger(round) && round > 0, "open round index must be a positive integer");
+  if (!session.open_round) {
+    session.open_round = {
+      index: round,
+      proposal: null,
+      evidence_added: [],
+      findings_against_proposal: [],
+      review_summary: { total: 0, high: 0, medium: 0, low: 0, material: 0, gaps: 0 },
+      verdict: null,
+      phase_history: [],
+      created_at: nowIso(),
+      updated_at: nowIso(),
+      error: null,
+    };
+  }
+  invariant(session.open_round.index === round, `session already has open round ${session.open_round.index}`);
+  return session.open_round;
+}
+
+function refreshOpenRoundSummary(session) {
+  const roundRecord = session.open_round;
+  if (!roundRecord) {
+    return;
+  }
+  const counts = findingCounts(currentRoundFindings(roundRecord));
+  roundRecord.review_summary = counts;
+  roundRecord.updated_at = nowIso();
+  session.status = {
+    ...session.status,
+    round: roundRecord.index,
+    unresolved_high: counts.high,
+    unresolved_medium: counts.medium,
+  };
+}
+
+function roundPhaseIndex(roundRecord, actor, phase, status = "running") {
+  for (let index = roundRecord.phase_history.length - 1; index >= 0; index -= 1) {
+    const item = roundRecord.phase_history[index];
+    if (item.actor === actor && item.phase === phase && item.status === status) {
+      return index;
+    }
+  }
+  return -1;
+}
+
 function createSession({ id, topic, chair = "chair", critics = [], max_rounds = 3, adapter = "unknown" }) {
   invariant(typeof id === "string" && /^[A-Za-z0-9._-]+$/.test(id), "session id must match [A-Za-z0-9._-]+");
   invariant(typeof topic === "string" && topic.trim().length > 0, "topic must be a non-empty string");
@@ -43,6 +97,7 @@ function createSession({ id, topic, chair = "chair", critics = [], max_rounds = 
     adapter,
     evidence: [],
     rounds: [],
+    open_round: null,
     adjudicated_proposal: null,
     status: {
       round: 0,
@@ -50,6 +105,9 @@ function createSession({ id, topic, chair = "chair", critics = [], max_rounds = 
       unresolved_high: 0,
       unresolved_medium: 0,
       state: "initialized",
+      active_actor: null,
+      active_phase: null,
+      error: null,
     },
   };
 }
@@ -81,71 +139,220 @@ function appendEvidence(session, { items, collectedBy, phase, round }) {
   return added;
 }
 
-function applyRound(session, { proposal, findings, verdict = null, evidence_added = [] }) {
-  validateProposal(proposal);
-  invariant(Array.isArray(findings), "findings must be an array");
-  invariant(Array.isArray(evidence_added), "evidence_added must be an array");
+function startRound(session, round) {
+  const roundRecord = ensureOpenRound(session, round);
+  session.status = {
+    ...session.status,
+    round,
+    converged: false,
+    unresolved_high: roundRecord.review_summary.high || 0,
+    unresolved_medium: roundRecord.review_summary.medium || 0,
+    state: "running",
+    active_actor: null,
+    active_phase: null,
+    error: null,
+  };
+  roundRecord.updated_at = nowIso();
+  return roundRecord;
+}
 
-  const round = session.rounds.length + 1;
+function recordPhaseStart(session, { round, actor, phase, input_summary }) {
+  const roundRecord = startRound(session, round);
+  roundRecord.phase_history.push({
+    actor,
+    phase,
+    status: "running",
+    input_summary: input_summary || null,
+    output_summary: null,
+    artifact: null,
+    started_at: nowIso(),
+    completed_at: null,
+    duration_ms: null,
+    error: null,
+  });
+  roundRecord.updated_at = nowIso();
+  session.status = {
+    ...session.status,
+    active_actor: actor,
+    active_phase: phase,
+    error: null,
+  };
+  return roundRecord;
+}
+
+function completePhase(session, { round, actor, phase, output_summary, artifact = null, duration_ms, error = null }) {
+  const roundRecord = ensureOpenRound(session, round);
+  const index = roundPhaseIndex(roundRecord, actor, phase);
+  invariant(index >= 0, `no running phase record for ${actor}/${phase} in round ${round}`);
+  const nextStatus = error ? "failed" : "succeeded";
+  const completedAt = nowIso();
+  roundRecord.phase_history[index] = {
+    ...roundRecord.phase_history[index],
+    status: nextStatus,
+    output_summary: output_summary || null,
+    artifact,
+    completed_at: completedAt,
+    duration_ms: duration_ms ?? null,
+    error: error || null,
+  };
+  roundRecord.updated_at = completedAt;
+  session.status = {
+    ...session.status,
+    active_actor: error ? actor : null,
+    active_phase: error ? phase : null,
+    error: error
+      ? {
+          message: error.message || String(error),
+          at: completedAt,
+        }
+      : null,
+  };
+}
+
+function noteRoundEvidence(session, { round, evidence_added }) {
+  const roundRecord = ensureOpenRound(session, round);
+  invariant(Array.isArray(evidence_added), "evidence_added must be an array");
+  const seen = new Set(roundRecord.evidence_added);
+  for (const evidenceId of evidence_added) {
+    invariant(typeof evidenceId === "string" && evidenceId.trim().length > 0, "evidence_added[] must be non-empty strings");
+    if (!seen.has(evidenceId)) {
+      roundRecord.evidence_added.push(evidenceId);
+      seen.add(evidenceId);
+    }
+  }
+  roundRecord.updated_at = nowIso();
+}
+
+function registerProposal(session, { round, proposal }) {
+  validateProposal(proposal);
+  const roundRecord = ensureOpenRound(session, round);
+  roundRecord.proposal = proposal;
+  roundRecord.updated_at = nowIso();
+}
+
+function appendRoundFindings(session, { round, findings }) {
+  const roundRecord = ensureOpenRound(session, round);
+  invariant(Array.isArray(findings), "findings must be an array");
   const evidence = evidenceIndex(session);
-  const seenFindingIds = new Set();
-  const normalizedFindings = findings.map((finding, index) => {
+  const seenFindingIds = new Set(currentRoundFindings(roundRecord).map((item) => item.id));
+  const nextFindings = findings.map((finding, index) => {
     const next = { ...finding };
-    validateFinding(next, evidence, `rounds[${round}].findings[${index}]`);
+    validateFinding(next, evidence, `open_round.findings_against_proposal[${index}]`);
     invariant(!seenFindingIds.has(next.id), `duplicate finding id ${next.id}`);
     seenFindingIds.add(next.id);
     return next;
   });
+  roundRecord.findings_against_proposal.push(...nextFindings);
+  refreshOpenRoundSummary(session);
+}
 
-  const counts = findingCounts(normalizedFindings);
-  const material = normalizedFindings.filter(isMaterialFinding);
+function registerVerdict(session, { round, verdict }) {
+  const roundRecord = ensureOpenRound(session, round);
+  if (verdict === null) {
+    roundRecord.verdict = null;
+    roundRecord.updated_at = nowIso();
+    return;
+  }
+  invariant(verdict && typeof verdict === "object", "verdict must be an object");
+  invariant(Array.isArray(verdict.decisions), "verdict.decisions must be an array");
+  if (verdict.revised_proposal !== undefined && verdict.revised_proposal !== null) {
+    validateProposal(verdict.revised_proposal, "verdict.revised_proposal");
+  }
+  const findings = currentRoundFindings(roundRecord);
+  const findingsById = findingIndex(findings);
+  const evidence = evidenceIndex(session);
+  invariant(verdict.decisions.length === findings.length, "verdict must contain exactly one decision for every finding");
+  const seenDecisionIds = new Set();
+  verdict.decisions.forEach((decision, index) => {
+    validateDecision(decision, findingsById, evidence, `open_round.verdict.decisions[${index}]`);
+    invariant(!seenDecisionIds.has(decision.finding_id), `duplicate decision for finding ${decision.finding_id}`);
+    seenDecisionIds.add(decision.finding_id);
+  });
+  roundRecord.verdict = verdict;
+  roundRecord.updated_at = nowIso();
+}
+
+function markSessionFailed(session, { round, actor, phase, error }) {
+  const message = error?.message || String(error);
+  session.status = {
+    ...session.status,
+    round: round || session.open_round?.index || session.status.round,
+    state: "failed",
+    active_actor: actor || session.status.active_actor,
+    active_phase: phase || session.status.active_phase,
+    error: {
+      message,
+      at: nowIso(),
+    },
+  };
+  if (session.open_round) {
+    session.open_round.error = {
+      message,
+      actor: actor || null,
+      phase: phase || null,
+      at: nowIso(),
+    };
+    session.open_round.updated_at = nowIso();
+  }
+}
+
+function applyRound(session) {
+  const roundRecord = session.open_round;
+  invariant(roundRecord, "session has no open round to apply");
+  validateProposal(roundRecord.proposal);
+  invariant(Array.isArray(roundRecord.evidence_added), "open_round.evidence_added must be an array");
+
+  const findings = currentRoundFindings(roundRecord).map((finding) => ({ ...finding }));
+  const counts = findingCounts(findings);
+  const material = findings.filter(isMaterialFinding);
+  const verdict = roundRecord.verdict;
 
   if (verdict) {
     invariant(verdict && typeof verdict === "object", "verdict must be an object");
     invariant(Array.isArray(verdict.decisions), "verdict.decisions must be an array");
-    if (verdict.revised_proposal !== undefined && verdict.revised_proposal !== null) {
-      validateProposal(verdict.revised_proposal, "verdict.revised_proposal");
-    }
-    const findingsById = findingIndex(normalizedFindings);
-    invariant(
-      verdict.decisions.length === normalizedFindings.length,
-      "verdict must contain exactly one decision for every finding in the round",
-    );
-    const seenDecisionIds = new Set();
-    verdict.decisions.forEach((decision, index) => {
-      validateDecision(decision, findingsById, evidence, `rounds[${round}].verdict.decisions[${index}]`);
-      invariant(!seenDecisionIds.has(decision.finding_id), `duplicate decision for finding ${decision.finding_id}`);
-      seenDecisionIds.add(decision.finding_id);
-    });
   } else {
     invariant(material.length === 0, "material findings require a verdict before the round can close");
   }
 
-  const roundRecord = {
-    index: round,
-    proposal,
-    evidence_added,
-    findings: normalizedFindings,
+  const closedRound = {
+    index: roundRecord.index,
+    proposal: roundRecord.proposal,
+    evidence_added: [...roundRecord.evidence_added],
+    findings_against_proposal: findings,
     review_summary: counts,
     verdict,
-    created_at: nowIso(),
+    phase_history: [...roundRecord.phase_history],
+    created_at: roundRecord.created_at,
+    updated_at: nowIso(),
   };
 
-  session.rounds.push(roundRecord);
-  session.adjudicated_proposal = verdict?.revised_proposal || proposal;
+  session.rounds.push(closedRound);
+  session.open_round = null;
+  session.adjudicated_proposal = verdict?.revised_proposal || roundRecord.proposal;
   session.status = {
-    round,
+    ...session.status,
+    round: closedRound.index,
     converged: counts.material === 0,
     unresolved_high: counts.high,
     unresolved_medium: counts.medium,
     state: counts.material === 0 ? "converged" : "needs_revision",
+    active_actor: null,
+    active_phase: null,
+    error: null,
   };
 
-  return roundRecord;
+  return closedRound;
 }
 
 module.exports = {
   appendEvidence,
   applyRound,
+  appendRoundFindings,
+  completePhase,
   createSession,
+  markSessionFailed,
+  noteRoundEvidence,
+  recordPhaseStart,
+  registerProposal,
+  registerVerdict,
 };

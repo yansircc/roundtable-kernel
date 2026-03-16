@@ -42,24 +42,27 @@ Convergence is decided from critic findings, not from the chair's self-report.
 
 ## Layout
 
-- [`src/domain.js`](/private/tmp/roundtable-kernel/src/domain.js): value-level invariants
-- [`src/kernel.js`](/private/tmp/roundtable-kernel/src/kernel.js): session state machine
-- [`src/orchestrator.js`](/private/tmp/roundtable-kernel/src/orchestrator.js): bounded round runner
-- [`src/adapters/fixture.js`](/private/tmp/roundtable-kernel/src/adapters/fixture.js): fixture adapter
-- [`src/adapters/exec.js`](/private/tmp/roundtable-kernel/src/adapters/exec.js): shell-command adapter for real runtimes
-- [`src/store.js`](/private/tmp/roundtable-kernel/src/store.js): JSON persistence
-- [`src/view.js`](/private/tmp/roundtable-kernel/src/view.js): derived read models for UI/API
-- [`src/server.js`](/private/tmp/roundtable-kernel/src/server.js): HTTP API + static UI server
-- [`src/cli.js`](/private/tmp/roundtable-kernel/src/cli.js): minimal CLI
-- [`fixtures/evidence-ledger.json`](/private/tmp/roundtable-kernel/fixtures/evidence-ledger.json): 2-round semantic redesign sample
-- [`fixtures/minigit-plan.json`](/private/tmp/roundtable-kernel/fixtures/minigit-plan.json): 3-round planning sample
-- [`fixtures/minigit-exec.json`](/private/tmp/roundtable-kernel/fixtures/minigit-exec.json): exec-adapter sample config
-- [`ui/src/App.svelte`](/private/tmp/roundtable-kernel/ui/src/App.svelte): semantic dashboard
+- [`src/domain.js`](/Users/yansir/code/52/roundtable-kernel/src/domain.js): value-level invariants
+- [`src/kernel.js`](/Users/yansir/code/52/roundtable-kernel/src/kernel.js): session state machine
+- [`src/orchestrator.js`](/Users/yansir/code/52/roundtable-kernel/src/orchestrator.js): bounded round runner
+- [`src/adapters/fixture.js`](/Users/yansir/code/52/roundtable-kernel/src/adapters/fixture.js): fixture adapter
+- [`src/adapters/exec.js`](/Users/yansir/code/52/roundtable-kernel/src/adapters/exec.js): shell-command adapter for real runtimes
+- [`src/store.js`](/Users/yansir/code/52/roundtable-kernel/src/store.js): JSON persistence
+- [`src/view.js`](/Users/yansir/code/52/roundtable-kernel/src/view.js): derived read models for UI/API
+- [`src/server.js`](/Users/yansir/code/52/roundtable-kernel/src/server.js): HTTP API + static UI server
+- [`src/cli.js`](/Users/yansir/code/52/roundtable-kernel/src/cli.js): minimal CLI
+- [`fixtures/evidence-ledger.json`](/Users/yansir/code/52/roundtable-kernel/fixtures/evidence-ledger.json): 2-round semantic redesign sample
+- [`fixtures/minigit-plan.json`](/Users/yansir/code/52/roundtable-kernel/fixtures/minigit-plan.json): 3-round planning sample
+- [`fixtures/minigit-exec.json`](/Users/yansir/code/52/roundtable-kernel/fixtures/minigit-exec.json): exec-adapter sample config
+- [`examples/claude-agent.js`](/Users/yansir/code/52/roundtable-kernel/examples/claude-agent.js): Claude CLI semantic wrapper
+- [`examples/codex-agent.js`](/Users/yansir/code/52/roundtable-kernel/examples/codex-agent.js): Codex CLI semantic wrapper
+- [`examples/runtime-spec.template.json`](/Users/yansir/code/52/roundtable-kernel/examples/runtime-spec.template.json): real-runtime spec template
+- [`ui/src/App.svelte`](/Users/yansir/code/52/roundtable-kernel/ui/src/App.svelte): semantic dashboard
 
 ## Commands
 
 ```bash
-cd /private/tmp/roundtable-kernel
+cd /Users/yansir/code/52/roundtable-kernel
 
 node src/cli.js demo evidence-ledger --force
 node src/cli.js run fixture minigit-plan fixtures/minigit-plan.json --force
@@ -78,8 +81,16 @@ The dashboard defaults to [http://127.0.0.1:3133](http://127.0.0.1:3133) and ser
 
 - `GET /api/sessions`: derived session summaries from durable JSON
 - `GET /api/session/:id`: full session truth for one discussion
+- `GET /api/telemetry/:id`: durable runtime telemetry sidecar for one discussion
+- `GET /api/telemetry/:id?since=N`: incremental telemetry tail from durable history
 
-The UI intentionally does not read stream logs or provider telemetry.
+Durable state is split on purpose:
+
+- `sessions/<id>.json`: semantic truth only, including `open_round` when a round is still running or has failed before adjudication
+- `telemetry/<id>.jsonl`: runtime sidecar only
+
+The UI reads both, but it does not treat stream logs or provider chatter as source of truth.
+`open_round.phase_history` is the durable semantic record for in-flight or failed discussion state.
 
 ## Exec Adapter
 
@@ -124,6 +135,53 @@ The command must print one JSON document to stdout:
 
 This keeps the kernel ignorant of providers. Real CLIs can sit behind a thin wrapper that only translates prompts and JSON.
 
+## CLI Wrappers
+
+Two thin wrappers are included:
+
+- [`examples/claude-agent.js`](/Users/yansir/code/52/roundtable-kernel/examples/claude-agent.js): calls `${CLAUDE_BIN:-claude} -p --output-format json --json-schema ...` with isolated settings/MCP defaults and extracts `result.structured_output`
+- [`examples/codex-agent.js`](/Users/yansir/code/52/roundtable-kernel/examples/codex-agent.js): calls `codex exec --output-schema ... --output-last-message ...`
+
+Both wrappers:
+
+- read one roundtable request JSON document from stdin
+- build a phase-specific prompt plus JSON Schema
+- return one semantic JSON document on stdout
+- keep provider/runtime details out of the kernel
+
+The Claude wrapper defaults to a minimal runtime surface:
+
+- `--setting-sources ""`
+- `--strict-mcp-config`
+- `--mcp-config '{"mcpServers":{}}'`
+- `--disable-slash-commands`
+
+This removes ambient user/project MCP and plugin drift from roundtable runs while still allowing an explicit `--settings` file.
+
+Claude authentication can be injected entirely through environment variables. The exec adapter already merges the parent shell environment with optional `agent.env` / `actors.<name>.env` overrides, so you do not need to hardcode credentials in the repository. Prefer launching runs like this:
+
+```bash
+ANTHROPIC_BASE_URL="https://your-relay.example" \
+ANTHROPIC_AUTH_TOKEN="..." \
+node src/cli.js run exec my-session /absolute/path/to/spec.json --force
+```
+
+If you need a different binary, set `CLAUDE_BIN=ccc` or pass `--bin ccc` to the wrapper. Telemetry records only environment key names, never credential values.
+
+Runtime execution remains observable through telemetry events such as:
+
+- `session_started` / `session_finished`
+- `phase_started` / `phase_succeeded` / `phase_failed`
+- `command_started` / `command_finished` / `command_failed`
+
+Each command event records the sanitized argv, cwd, env key names, duration, exit code, and clipped stdout/stderr excerpts.
+
+The fastest way to wire a real discussion is to copy [`examples/runtime-spec.template.json`](/Users/yansir/code/52/roundtable-kernel/examples/runtime-spec.template.json), replace `__TARGET_REPO__` and `__CLAUDE_SETTINGS__`, then run:
+
+```bash
+node src/cli.js run exec my-session /absolute/path/to/spec.json --force
+```
+
 ## Fixture Shape
 
 The fixture adapter is explicit about who gathered evidence and in which phase:
@@ -144,7 +202,7 @@ The fixture adapter is explicit about who gathered evidence and in which phase:
         }
       ],
       "proposal": { "summary": "..." },
-      "findings": [],
+      "findings_against_proposal": [],
       "verdict": null
     }
   ]

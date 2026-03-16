@@ -114,7 +114,7 @@ async function main() {
   }
 
   if (request.phase === "review") {
-    const findings = (round.findings || [])
+    const findings = (round.findings_against_proposal || round.findings || [])
       .filter((finding) => finding.critic === request.actor)
       .map((finding) => mapFinding(finding, request.session, evidenceIndex));
     process.stdout.write(`${JSON.stringify({ findings })}\n`);

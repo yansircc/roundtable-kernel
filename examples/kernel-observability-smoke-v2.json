@@ -1,0 +1,74 @@
+{
+  "topic": "Derive the minimal next-step plan for hardening durable phase history and wrapper-stream observability in roundtable-kernel without leaking provider runtime semantics into the kernel.",
+  "chair": "opus",
+  "critics": [
+    "gpt-5.4",
+    "sonnet"
+  ],
+  "max_rounds": 1,
+  "seed_batch": {
+    "actor": "opus",
+    "collected_by": "opus",
+    "items": []
+  },
+  "agent": {
+    "cmd": [
+      "node",
+      "examples/claude-agent.js",
+      "--workspace",
+      "/Users/yansir/code/52/roundtable-kernel",
+      "--model",
+      "sonnet",
+      "--settings",
+      "/Users/yansir/code/52/roundtable-kernel/examples/claude-roundtable.settings.json",
+      "--timeout",
+      "300000"
+    ],
+    "cwd": "..",
+    "timeout_ms": 360000
+  },
+  "actors": {
+    "opus": {
+      "cmd": [
+        "node",
+        "examples/claude-agent.js",
+        "--workspace",
+        "/Users/yansir/code/52/roundtable-kernel",
+        "--model",
+        "opus",
+        "--settings",
+        "/Users/yansir/code/52/roundtable-kernel/examples/claude-roundtable.settings.json",
+        "--timeout",
+        "300000"
+      ]
+    },
+    "sonnet": {
+      "cmd": [
+        "node",
+        "examples/claude-agent.js",
+        "--workspace",
+        "/Users/yansir/code/52/roundtable-kernel",
+        "--model",
+        "sonnet",
+        "--settings",
+        "/Users/yansir/code/52/roundtable-kernel/examples/claude-roundtable.settings.json",
+        "--timeout",
+        "300000"
+      ]
+    },
+    "gpt-5.4": {
+      "cmd": [
+        "node",
+        "examples/codex-agent.js",
+        "--workspace",
+        "/Users/yansir/code/52/roundtable-kernel",
+        "--model",
+        "gpt-5.4",
+        "--sandbox",
+        "read-only",
+        "--timeout",
+        "300000"
+      ]
+    }
+  }
+}

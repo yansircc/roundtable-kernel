@@ -5,6 +5,8 @@
   let sessions = [];
   let selectedId = null;
   let selected = null;
+  let telemetry = [];
+  let telemetryOffset = 0;
   let now = Date.now();
   let error = '';
 
@@ -39,10 +41,25 @@
     selected = await getJson(`/api/session/${encodeURIComponent(selectedId)}`);
   }
 
-  async function refresh() {
+  async function refreshTelemetry({ reset = false } = {}) {
+    if (!selectedId) {
+      telemetry = [];
+      telemetryOffset = 0;
+      return;
+    }
+    const since = reset ? 0 : telemetryOffset;
+    const data = await getJson(`/api/telemetry/${encodeURIComponent(selectedId)}?since=${since}`);
+    const events = data.events || [];
+    telemetry = reset || since === 0 ? events : [...telemetry, ...events];
+    telemetryOffset = data.next_offset || telemetry.length;
+  }
+
+  async function refresh({ resetTelemetry = false } = {}) {
     try {
+      const previousSelectedId = selectedId;
       await refreshSessions();
-      await refreshSelected();
+      const selectionChanged = resetTelemetry || previousSelectedId !== selectedId;
+      await Promise.all([refreshSelected(), refreshTelemetry({ reset: selectionChanged })]);
       error = '';
     } catch (nextError) {
       error = nextError.message;
@@ -51,15 +68,18 @@
 
   function selectSession(id) {
     selectedId = id;
-    refreshSelected();
+    Promise.all([refreshSelected(), refreshTelemetry({ reset: true })]);
   }
 
   function tone(state) {
     switch (state) {
+      case 'running':
+        return 'warn';
       case 'converged':
         return 'good';
       case 'needs_revision':
         return 'warn';
+      case 'failed':
       case 'exhausted':
         return 'bad';
       default:
@@ -72,7 +92,21 @@
   }
 
   function phaseTone(phase) {
-    return phase === 'seed' ? 'seed' : phase === 're-explore' ? 'reexplore' : 'explore';
+    return phase === 'seed'
+      ? 'seed'
+      : phase === 're-explore'
+        ? 'reexplore'
+        : phase === 'propose'
+          ? 'propose'
+          : phase === 'review'
+            ? 'review'
+            : phase === 'adjudicate'
+              ? 'adjudicate'
+              : 'explore';
+  }
+
+  function phaseStatusTone(status) {
+    return status === 'failed' ? 'bad' : status === 'succeeded' ? 'good' : status === 'running' ? 'warn' : 'muted';
   }
 
   function clock(iso) {
@@ -98,11 +132,43 @@
     return new Map((session?.evidence || []).map((item) => [item.id, item]));
   }
 
+  function roundFindings(round) {
+    return round?.findings_against_proposal || round?.findings || [];
+  }
+
+  function roundPhaseHistory(round) {
+    return round?.phase_history || [];
+  }
+
+  function eventTone(type) {
+    if (type === 'wrapper_stream') return 'warn';
+    if (type?.endsWith('failed')) return 'bad';
+    if (type?.endsWith('succeeded') || type?.endsWith('finished')) return 'good';
+    if (type?.endsWith('started')) return 'muted';
+    return 'warn';
+  }
+
+  function eventSubject(event) {
+    const parts = [];
+    if (event.actor) parts.push(event.actor);
+    if (event.phase) parts.push(event.phase);
+    if (event.type === 'wrapper_stream' && event.channel) parts.push(event.channel);
+    if (!parts.length && event.source) parts.push(event.source);
+    return parts.join(' / ') || 'session';
+  }
+
+  function currentArtifact(session) {
+    return session?.open_round?.proposal || session?.adjudicated_proposal || null;
+  }
+
   $: selectedSummary = sessions.find((session) => session.id === selectedId) || null;
   $: evidenceById = evidenceMap(selected);
+  $: selectedOpenRound = selected?.open_round || null;
+  $: selectedRounds = selected ? [...(selected.rounds || []), ...(selectedOpenRound ? [selectedOpenRound] : [])] : [];
+  $: selectedArtifact = currentArtifact(selected);
 
   onMount(() => {
-    refresh();
+    refresh({ resetTelemetry: true });
     const sessionTimer = setInterval(refresh, 2000);
     const clockTimer = setInterval(() => {
       now = Date.now();
@@ -159,6 +225,16 @@
                 <span>medium {session.unresolved_medium}</span>
                 <span>gap {session.gap_findings}</span>
               </div>
+              {#if session.active_actor && session.active_phase}
+                <div class="card-meta">
+                  <span>live {session.active_actor}</span>
+                  <span>{session.active_phase}</span>
+                </div>
+              {:else if session.error_message}
+                <div class="card-meta">
+                  <span>{session.error_message}</span>
+                </div>
+              {/if}
               <div class="critic-row">
                 {#each session.critics as critic}
                   {@const counts = session.findings_by_critic?.[critic] || { total: 0, high: 0, medium: 0 }}
@@ -178,7 +254,13 @@
             <div class="eyebrow">Selected Session</div>
             <h2>{selected.id}</h2>
             <p class="hero-topic">{selected.topic}</p>
-            <p class="hero-summary">{selected.adjudicated_proposal?.summary || 'No adjudicated proposal yet.'}</p>
+            <p class="hero-summary">{selectedArtifact?.summary || 'No proposal material yet.'}</p>
+            {#if selected.open_round}
+              <p class="hero-status">Open round {selected.open_round.index} is still provisional.</p>
+            {/if}
+            {#if selected.status?.error?.message}
+              <p class="hero-status failure">{selected.status.error.message}</p>
+            {/if}
           </div>
           <div class="hero-metrics">
             <div class="metric">
@@ -205,12 +287,18 @@
           <article class="panel summary-card">
             <div class="summary-label">Unresolved</div>
             <div class="summary-value">{selected.status.unresolved_high} high / {selected.status.unresolved_medium} medium</div>
-            <p>Convergence remains critic-driven.</p>
+            <p>
+              {#if selected.status.active_actor && selected.status.active_phase}
+                live: {selected.status.active_actor} / {selected.status.active_phase}
+              {:else}
+                convergence remains critic-driven.
+              {/if}
+            </p>
           </article>
           <article class="panel summary-card">
             <div class="summary-label">Evidence Ledger</div>
             <div class="summary-value">{selected.evidence.length}</div>
-            <p>Seed, explore, and re-explore remain explicit phases.</p>
+            <p>{selected.open_round ? `open round ${selected.open_round.index} remains durable.` : 'Seed, explore, and re-explore remain explicit phases.'}</p>
           </article>
         </section>
 
@@ -218,24 +306,28 @@
           <section class="panel rounds">
             <div class="section-head">
               <h2>Rounds</h2>
-              <span>{selected.rounds.length}</span>
+              <span>{selectedRounds.length}</span>
             </div>
 
             <div class="round-list">
-              {#each selected.rounds as round}
+              {#each selectedRounds as round}
+                {@const findings = roundFindings(round)}
+                {@const phases = roundPhaseHistory(round)}
+                {@const isOpenRound = selectedOpenRound?.index === round.index}
                 <article class="round-card">
                   <div class="round-head">
                     <div>
-                      <div class="eyebrow">Round {round.index}</div>
-                      <h3>{round.proposal.summary}</h3>
+                      <div class="eyebrow">{isOpenRound ? 'Open Round' : 'Round'} {round.index}</div>
+                      <h3>{round.proposal?.summary || 'No proposal yet.'}</h3>
                     </div>
                     <div class="round-badges">
-                      <span class="pill muted">{round.review_summary.total} findings</span>
+                      <span class="pill {tone(isOpenRound ? selected.status.state : 'converged')}">{isOpenRound ? selected.status.state : 'closed'}</span>
+                      <span class="pill muted">{round.review_summary?.total || findings.length} findings</span>
                       <span class="pill muted">{round.evidence_added.length} evidence</span>
                     </div>
                   </div>
 
-                  {#if round.proposal.claims?.length}
+                  {#if round.proposal?.claims?.length}
                     <div class="claim-strip">
                       {#each round.proposal.claims as claim}
                         <span class="token">{claim}</span>
@@ -246,11 +338,11 @@
                   <div class="subgrid">
                     <div>
                       <div class="block-label">Findings Against Proposal</div>
-                      {#if round.findings.length === 0}
+                      {#if findings.length === 0}
                         <div class="empty thin">Clean critic pass. No material findings remain.</div>
                       {:else}
                         <div class="finding-list">
-                          {#each round.findings as finding}
+                          {#each findings as finding}
                             <article class="finding">
                               <div class="finding-head">
                                 <div class="finding-tags">
@@ -294,10 +386,64 @@
                             {/each}
                           </div>
                         </article>
+                      {:else if isOpenRound && selected.status.state === 'failed'}
+                        <div class="empty thin">Interrupted before adjudication.</div>
+                      {:else if isOpenRound}
+                        <div class="empty thin">Round is still in flight.</div>
                       {:else}
                         <div class="empty thin">Skipped because the critic pass already converged.</div>
                       {/if}
                     </div>
+                  </div>
+
+                  <div class="phase-panel">
+                    <div class="block-label">Durable Phase History</div>
+                    {#if phases.length === 0}
+                      <div class="empty thin">No durable phase records yet.</div>
+                    {:else}
+                      <div class="phase-list">
+                        {#each phases as entry}
+                          <details class="phase-card">
+                            <summary>
+                              <div class="telemetry-top">
+                                <span class="pill {phaseStatusTone(entry.status)}">{entry.status}</span>
+                                <span class="telemetry-subject">{entry.actor} / {entry.phase}</span>
+                              </div>
+                              <div class="telemetry-meta">
+                                <span>{clock(entry.started_at)}</span>
+                                {#if entry.duration_ms !== null}
+                                  <span>{entry.duration_ms}ms</span>
+                                {/if}
+                              </div>
+                            </summary>
+                            {#if entry.input_summary}
+                              <div class="phase-block">
+                                <div class="block-label">Input</div>
+                                <pre>{JSON.stringify(entry.input_summary, null, 2)}</pre>
+                              </div>
+                            {/if}
+                            {#if entry.output_summary}
+                              <div class="phase-block">
+                                <div class="block-label">Output</div>
+                                <pre>{JSON.stringify(entry.output_summary, null, 2)}</pre>
+                              </div>
+                            {/if}
+                            {#if entry.artifact}
+                              <div class="phase-block">
+                                <div class="block-label">Artifact</div>
+                                <pre>{JSON.stringify(entry.artifact, null, 2)}</pre>
+                              </div>
+                            {/if}
+                            {#if entry.error}
+                              <div class="phase-block">
+                                <div class="block-label">Error</div>
+                                <pre>{JSON.stringify(entry.error, null, 2)}</pre>
+                              </div>
+                            {/if}
+                          </details>
+                        {/each}
+                      </div>
+                    {/if}
                   </div>
                 </article>
               {/each}
@@ -331,6 +477,41 @@
             </div>
           </section>
         </div>
+
+        <section class="panel telemetry-panel">
+          <div class="section-head">
+            <h2>Telemetry</h2>
+            <span>{telemetry.length}</span>
+          </div>
+          <div class="telemetry-note">Transport side-channel only. Durable semantic truth lives in the round records above.</div>
+
+          {#if telemetry.length === 0}
+            <div class="empty">No telemetry yet.</div>
+          {:else}
+            <div class="telemetry-list">
+              {#each [...telemetry].reverse().slice(0, 80) as event}
+                <details class="telemetry-card">
+                  <summary>
+                    <div class="telemetry-top">
+                      <span class="pill {eventTone(event.type)}">{event.type}</span>
+                      <span class="telemetry-subject">{eventSubject(event)}</span>
+                    </div>
+                    <div class="telemetry-meta">
+                      <span>{clock(event.ts)}</span>
+                      {#if event.duration_ms !== undefined}
+                        <span>{event.duration_ms}ms</span>
+                      {/if}
+                      {#if event.source}
+                        <span>{event.source}</span>
+                      {/if}
+                    </div>
+                  </summary>
+                  <pre>{JSON.stringify(event, null, 2)}</pre>
+                </details>
+              {/each}
+            </div>
+          {/if}
+        </section>
       {:else}
         <section class="panel empty big">No session selected.</section>
       {/if}
@@ -480,6 +661,19 @@
     font-size: 1.02rem;
   }
 
+  .hero-status {
+    margin-top: 10px;
+    font-family: "IBM Plex Mono", "SFMono-Regular", monospace;
+    font-size: 12px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: rgba(31, 29, 26, 0.64);
+  }
+
+  .hero-status.failure {
+    color: #8b2018;
+  }
+
   .hero-metrics,
   .summary-grid {
     display: grid;
@@ -542,7 +736,8 @@
   .round-list,
   .evidence-list,
   .finding-list,
-  .decision-list {
+  .decision-list,
+  .telemetry-list {
     display: flex;
     flex-direction: column;
     gap: 12px;
@@ -681,10 +876,26 @@
     color: #0d6742;
   }
 
+  .propose {
+    background: #ffe6cc;
+    color: #8a4c00;
+  }
+
+  .review {
+    background: #f0e0ff;
+    color: #6a2ea0;
+  }
+
+  .adjudicate {
+    background: #dff5ee;
+    color: #126452;
+  }
+
   .round-card,
   .evidence-card,
   .finding,
-  .verdict {
+  .verdict,
+  .telemetry-card {
     padding: 16px;
     border-radius: 18px;
     border: 1px solid rgba(31, 29, 26, 0.12);
@@ -702,6 +913,38 @@
   }
 
   .claim-strip {
+    margin-top: 12px;
+  }
+
+  .phase-panel {
+    margin-top: 14px;
+  }
+
+  .phase-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 10px;
+  }
+
+  .phase-card {
+    padding: 14px;
+    border-radius: 16px;
+    border: 1px solid rgba(31, 29, 26, 0.12);
+    background: rgba(255, 248, 238, 0.92);
+  }
+
+  .phase-card summary {
+    list-style: none;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    margin: 0;
+  }
+
+  .phase-block {
     margin-top: 12px;
   }
 
@@ -743,6 +986,44 @@
   details summary {
     margin-top: 10px;
     color: rgba(31, 29, 26, 0.62);
+  }
+
+  .telemetry-panel {
+    margin-top: 18px;
+    padding: 18px;
+    border-radius: 24px;
+  }
+
+  .telemetry-note {
+    margin-bottom: 14px;
+    color: rgba(31, 29, 26, 0.62);
+    line-height: 1.5;
+  }
+
+  .telemetry-card summary {
+    list-style: none;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: center;
+    margin: 0;
+  }
+
+  .telemetry-top,
+  .telemetry-meta {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .telemetry-subject,
+  .telemetry-meta {
+    font-family: "IBM Plex Mono", "SFMono-Regular", monospace;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
   }
 
   details {

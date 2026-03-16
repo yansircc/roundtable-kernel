@@ -40,7 +40,7 @@ function validateSpec(spec) {
   }
 }
 
-function createExecAdapter({ specPath }) {
+function createExecAdapter({ specPath, telemetryFile = null }) {
   const resolvedSpecPath = path.resolve(specPath);
   const specDir = path.dirname(resolvedSpecPath);
   const spec = readSpec(resolvedSpecPath);
@@ -65,8 +65,23 @@ function createExecAdapter({ specPath }) {
     return runJsonCommand({
       cmd: agent.cmd,
       cwd: agent.cwd,
-      env: agent.env,
+      env: {
+        ...agent.env,
+        ...(telemetryFile ? { ROUNDTABLE_TELEMETRY_FILE: telemetryFile } : {}),
+        ROUNDTABLE_ADAPTER_KIND: "exec",
+      },
       timeout_ms: agent.timeout_ms,
+      telemetry: {
+        file: telemetryFile,
+        context: {
+          session_id: payload.session?.id,
+          round: payload.round,
+          actor,
+          phase: payload.phase,
+          adapter: "exec",
+          source: "exec_adapter",
+        },
+      },
       input: {
         protocol: "roundtable-kernel.exec.v1",
         actor,
@@ -123,6 +138,9 @@ function createExecAdapter({ specPath }) {
       return result.findings || [];
     },
     async adjudicate({ session, round, proposal, findings }) {
+      if (!Array.isArray(findings) || findings.length === 0) {
+        return null;
+      }
       const result = await invoke(spec.chair, {
         phase: "adjudicate",
         round,

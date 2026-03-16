@@ -3,6 +3,7 @@ const http = require("node:http");
 const fs = require("node:fs");
 const path = require("node:path");
 const { loadSession, listSessions, projectRoot } = require("./store");
+const { loadTelemetry } = require("./telemetry");
 const { deriveSessionSummary, sortSessionSummaries } = require("./view");
 
 const staticRoot = path.join(projectRoot, "ui", "dist");
@@ -111,6 +112,16 @@ function createHandler() {
       if (urlPath.startsWith("/api/session/")) {
         const sessionId = decodeSessionId(urlPath);
         sendJson(res, 200, loadSession(sessionId));
+        return;
+      }
+
+      if (urlPath.startsWith("/api/telemetry/")) {
+        const sessionId = decodeURIComponent(urlPath.replace(/^\/api\/telemetry\//, ""));
+        const since = Number.parseInt(url.searchParams.get("since") || "0", 10);
+        sendJson(res, 200, {
+          session_id: sessionId,
+          ...loadTelemetry(sessionId, { since: Number.isInteger(since) && since > 0 ? since : 0 }),
+        });
         return;
       }
 

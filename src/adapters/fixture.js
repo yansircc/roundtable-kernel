@@ -6,7 +6,13 @@ function readFixture(file) {
 }
 
 function uniqueCritics(rounds) {
-  return [...new Set((rounds || []).flatMap((round) => (round.findings || []).map((finding) => finding.critic)))];
+  return [
+    ...new Set(
+      (rounds || []).flatMap((round) =>
+        (round.findings_against_proposal || round.findings || []).map((finding) => finding.critic),
+      ),
+    ),
+  ];
 }
 
 function replaceEvidenceKeys(values, evidenceKeyMap) {
@@ -69,7 +75,7 @@ function createFixtureAdapter({ fixturePath }) {
     },
     review({ round, critic, evidenceKeyMap }) {
       const spec = roundAt(round);
-      return (spec.findings || [])
+      return (spec.findings_against_proposal || spec.findings || [])
         .filter((finding) => finding.critic === critic)
         .map((finding) => ({
           id: finding.id,

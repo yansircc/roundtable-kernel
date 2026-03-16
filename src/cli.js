@@ -31,6 +31,7 @@ function extractFlag(args, flag) {
 }
 
 function renderSession(session) {
+  const roundFindings = (round) => round.findings_against_proposal || round.findings || [];
   const lines = [];
   lines.push(`session: ${session.id}`);
   lines.push(`topic:   ${session.topic}`);
@@ -42,6 +43,12 @@ function renderSession(session) {
   lines.push(`evidence:${String(session.evidence.length).padStart(4, " ")}`);
   lines.push(`high:    ${session.status.unresolved_high}`);
   lines.push(`medium:  ${session.status.unresolved_medium}`);
+  if (session.status.active_actor && session.status.active_phase) {
+    lines.push(`active:  ${session.status.active_actor}/${session.status.active_phase}`);
+  }
+  if (session.status.error?.message) {
+    lines.push(`error:   ${session.status.error.message}`);
+  }
   lines.push("");
   lines.push("adjudicated proposal:");
   lines.push(`  ${session.adjudicated_proposal?.summary || "none"}`);
@@ -64,6 +71,22 @@ function renderSession(session) {
     }
     lines.push("");
   });
+
+  if (session.open_round) {
+    const round = session.open_round;
+    const findings = roundFindings(round);
+    lines.push(`open round ${round.index}`);
+    lines.push(`  proposal: ${round.proposal?.summary || "none"}`);
+    lines.push(`  evidence added: ${round.evidence_added.length}`);
+    lines.push(
+      `  findings: total=${round.review_summary?.total || findings.length} high=${round.review_summary?.high || 0} medium=${round.review_summary?.medium || 0} low=${round.review_summary?.low || 0} gaps=${round.review_summary?.gaps || 0}`,
+    );
+    lines.push(`  phases:   ${round.phase_history?.length || 0}`);
+    if (round.error?.message) {
+      lines.push(`  error:    ${round.error.message}`);
+    }
+    lines.push("");
+  }
 
   return lines.join("\n");
 }

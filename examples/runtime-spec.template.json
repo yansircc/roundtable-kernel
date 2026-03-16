@@ -1,0 +1,62 @@
+{
+  "topic": "Replace this with the actual discussion topic.",
+  "chair": "opus",
+  "critics": [
+    "gpt-5.4",
+    "sonnet"
+  ],
+  "max_rounds": 3,
+  "seed_batch": {
+    "actor": "opus",
+    "collected_by": "opus",
+    "items": []
+  },
+  "agent": {
+    "cmd": [
+      "node",
+      "examples/claude-agent.js",
+      "--workspace",
+      "__TARGET_REPO__",
+      "--model",
+      "sonnet"
+    ],
+    "cwd": "..",
+    "timeout_ms": 180000
+  },
+  "actors": {
+    "opus": {
+      "cmd": [
+        "node",
+        "examples/claude-agent.js",
+        "--workspace",
+        "__TARGET_REPO__",
+        "--model",
+        "opus",
+        "--settings",
+        "__CLAUDE_SETTINGS__"
+      ]
+    },
+    "sonnet": {
+      "cmd": [
+        "node",
+        "examples/claude-agent.js",
+        "--workspace",
+        "__TARGET_REPO__",
+        "--model",
+        "sonnet",
+        "--settings",
+        "__CLAUDE_SETTINGS__"
+      ]
+    },
+    "gpt-5.4": {
+      "cmd": [
+        "node",
+        "examples/codex-agent.js",
+        "--workspace",
+        "__TARGET_REPO__",
+        "--model",
+        "gpt-5"
+      ]
+    }
+  }
+}
