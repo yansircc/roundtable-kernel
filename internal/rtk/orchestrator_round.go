@@ -15,7 +15,7 @@ func appendCollectedEvidence(session *Session, round int, evidenceKeyMap map[str
 	return added, nil
 }
 
-func runSeedPhase(ctx context.Context, adapter Adapter, session *Session, evidenceKeyMap map[string]string, telemetryFile string, paths Paths) error {
+func runSeedPhase(ctx context.Context, adapter *execAdapter, session *Session, evidenceKeyMap map[string]string, telemetryFile string, paths Paths) error {
 	_, err := runPhase(phaseRun{
 		TelemetryFile: telemetryFile,
 		Session:       session,
@@ -37,7 +37,7 @@ func runSeedPhase(ctx context.Context, adapter Adapter, session *Session, eviden
 	return err
 }
 
-func runCriticRound(ctx context.Context, adapter Adapter, session *Session, round int, critic string, proposal *Proposal, findings *[]Finding, evidenceKeyMap map[string]string, telemetryFile string, paths Paths) error {
+func runCriticRound(ctx context.Context, adapter *execAdapter, session *Session, round int, critic string, proposal *Proposal, findings *[]Finding, evidenceKeyMap map[string]string, telemetryFile string, paths Paths) error {
 	_, err := runPhase(phaseRun{
 		TelemetryFile: telemetryFile,
 		Session:       session,
@@ -95,7 +95,7 @@ func runCriticRound(ctx context.Context, adapter Adapter, session *Session, roun
 	return err
 }
 
-func runRound(ctx context.Context, adapter Adapter, session *Session, round int, evidenceKeyMap map[string]string, telemetryFile string, paths Paths) error {
+func runRound(ctx context.Context, adapter *execAdapter, session *Session, round int, evidenceKeyMap map[string]string, telemetryFile string, paths Paths) error {
 	_, err := runPhase(phaseRun{
 		TelemetryFile: telemetryFile,
 		Session:       session,

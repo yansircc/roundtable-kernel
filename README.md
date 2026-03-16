@@ -1,124 +1,131 @@
 # Roundtable Kernel
 
-`roundtable-kernel` is now a Go-first clean-room prototype for one idea:
+`roundtable-kernel` is a small deliberation kernel for multi-LLM discussion.
 
-```text
-provider is the change axis
-deliberation kernel is the stable axis
+It does one thing: run a bounded roundtable where semantic truth lives in `evidence`, `findings`, `verdict`, and `convergence`, while streams and provider logs remain observability only.
+
+```mermaid
+flowchart LR
+    A["Seed Evidence"] --> B["Explore"]
+    B --> C["Proposal"]
+    C --> D["Critic Re-Explore"]
+    D --> E["Findings Against Proposal"]
+    E --> F["Adjudication"]
+    F --> G{"Material Findings Left?"}
+    G -- "Yes" --> B
+    G -- "No" --> H["Converged"]
 ```
 
-The stable axis is not:
+## What You Can Do
 
-- CLI output
-- streaming events
-- UI state
-- provider auth
-- retries
+- Run one discussion from a JSON spec.
+- Inspect the durable session state after each run.
+- Serve a local UI for sessions and telemetry.
+- Swap Claude and Codex wrappers without changing kernel semantics.
 
-The stable axis is:
+## Quickstart
 
-- `evidence`
-- `finding`
-- `verdict`
-- `convergence`
-
-## Core law
-
-```text
-baseline facts -> challenge -> targeted re-explore -> evidence-backed findings -> verdict -> next baseline
-```
-
-Convergence is decided from critic findings, not from the chair's self-report.
-
-## Invariants
-
-- Events are optional observability only. They are not source of truth.
-- Evidence IDs are runtime-assigned.
-- A finding can be either:
-  - `supported`: it must cite one or more evidence IDs
-  - `gap`: it explicitly says the current ledger is insufficient, so it cites zero evidence IDs
-- A verdict never duplicates severity. Severity stays authoritative on the finding.
-- A clean critic pass converges even if no adjudication phase runs.
-
-## Layout
-
-- [`cmd/rtk/main.go`](/Users/yansir/code/52/roundtable-kernel/cmd/rtk/main.go): Go CLI entrypoint
-- [`internal/rtk/kernel.go`](/Users/yansir/code/52/roundtable-kernel/internal/rtk/kernel.go): session state machine
-- [`internal/rtk/orchestrator.go`](/Users/yansir/code/52/roundtable-kernel/internal/rtk/orchestrator.go): session lifecycle
-- [`internal/rtk/orchestrator_round.go`](/Users/yansir/code/52/roundtable-kernel/internal/rtk/orchestrator_round.go): bounded round runner
-- [`internal/rtk/orchestrator_phase.go`](/Users/yansir/code/52/roundtable-kernel/internal/rtk/orchestrator_phase.go): durable phase recording
-- [`internal/rtk/fixture_adapter.go`](/Users/yansir/code/52/roundtable-kernel/internal/rtk/fixture_adapter.go): fixture adapter
-- [`internal/rtk/exec_adapter.go`](/Users/yansir/code/52/roundtable-kernel/internal/rtk/exec_adapter.go): shell-command adapter for real runtimes
-- [`internal/rtk/store.go`](/Users/yansir/code/52/roundtable-kernel/internal/rtk/store.go): JSON persistence
-- [`internal/rtk/view.go`](/Users/yansir/code/52/roundtable-kernel/internal/rtk/view.go): derived read models for UI/API
-- [`internal/rtk/server.go`](/Users/yansir/code/52/roundtable-kernel/internal/rtk/server.go): HTTP API + static UI server
-- [`internal/rtk/command.go`](/Users/yansir/code/52/roundtable-kernel/internal/rtk/command.go): subprocess runner + telemetry
-- [`internal/rtk/agent_prompt.go`](/Users/yansir/code/52/roundtable-kernel/internal/rtk/agent_prompt.go): wrapper prompt construction
-- [`internal/rtk/agent_schema.go`](/Users/yansir/code/52/roundtable-kernel/internal/rtk/agent_schema.go): phase output schemas
-- [`cmd/claude-agent/main.go`](/Users/yansir/code/52/roundtable-kernel/cmd/claude-agent/main.go): Go Claude CLI wrapper
-- [`cmd/codex-agent/main.go`](/Users/yansir/code/52/roundtable-kernel/cmd/codex-agent/main.go): Go Codex CLI wrapper
-- [`cmd/mock-agent/main.go`](/Users/yansir/code/52/roundtable-kernel/cmd/mock-agent/main.go): Go deterministic mock runtime
-- [`fixtures/evidence-ledger.json`](/Users/yansir/code/52/roundtable-kernel/fixtures/evidence-ledger.json): 2-round semantic redesign sample
-- [`fixtures/minigit-plan.json`](/Users/yansir/code/52/roundtable-kernel/fixtures/minigit-plan.json): 3-round planning sample
-- [`fixtures/minigit-exec.json`](/Users/yansir/code/52/roundtable-kernel/fixtures/minigit-exec.json): exec-adapter sample config
-- [`examples/runtime-spec.template.json`](/Users/yansir/code/52/roundtable-kernel/examples/runtime-spec.template.json): real-runtime spec template
-- [`ui/src/App.svelte`](/Users/yansir/code/52/roundtable-kernel/ui/src/App.svelte): semantic dashboard
-
-## Commands
+Build the UI once:
 
 ```bash
 cd /Users/yansir/code/52/roundtable-kernel
-
-go run ./cmd/rtk demo evidence-ledger --force
-go run ./cmd/rtk run fixture minigit-plan fixtures/minigit-plan.json --force
-go run ./cmd/rtk run exec minigit-exec fixtures/minigit-exec.json --force
-go run ./cmd/rtk show evidence-ledger
-go run ./cmd/rtk list
-go run ./cmd/rtk serve --port 3133
 npm --prefix ui install
 npm --prefix ui run build
 ```
 
-`demo` is just a shortcut for the bundled `evidence-ledger` fixture. `run fixture` is the generic adapter entrypoint.
-`run exec` shells out to a configured command and admits only semantic JSON back into the kernel.
-`serve` is now implemented in Go; the Svelte app remains a static asset build step only.
+Run one session:
 
-The dashboard defaults to [http://127.0.0.1:3133](http://127.0.0.1:3133) and serves:
+```bash
+go run ./cmd/rtk run my-session /absolute/path/to/spec.json --force
+go run ./cmd/rtk show my-session
+```
 
-- `GET /api/sessions`: derived session summaries from durable JSON
-- `GET /api/session/:id`: full session truth for one discussion
-- `GET /api/telemetry/:id`: durable runtime telemetry sidecar for one discussion
-- `GET /api/telemetry/:id?since=N`: incremental telemetry tail from durable history
+Start the UI:
 
-Durable state is split on purpose:
+```bash
+go run ./cmd/rtk serve --port 3133
+```
 
-- `sessions/<id>.json`: semantic truth only, including `open_round` when a round is still running or has failed before adjudication
-- `telemetry/<id>.jsonl`: runtime sidecar only
+Then open [http://127.0.0.1:3133](http://127.0.0.1:3133).
 
-The UI reads both, but it does not treat stream logs or provider chatter as source of truth.
-`open_round.phase_history` is the durable semantic record for in-flight or failed discussion state.
+## CLI
 
-## Exec Adapter
+```bash
+go run ./cmd/rtk run <session-id> <spec-path> [--force]
+go run ./cmd/rtk show <session-id> [--json]
+go run ./cmd/rtk list
+go run ./cmd/rtk serve [--port 3133]
+```
 
-The `exec` adapter is the runtime bridge for real providers. It treats LLM CLIs as replaceable command executors.
+## Spec Shape
 
-The config names one command template plus optional per-actor overrides:
+The kernel runs exactly one execution mode: `exec`.
+
+The spec provides:
+
+- the topic
+- the chair and critics
+- a base command template
+- optional per-actor command overrides
+- optional seed evidence
+
+Minimal example:
 
 ```json
 {
-  "topic": "...",
+  "topic": "Derive a minimal implementation plan for feature X.",
   "chair": "opus",
   "critics": ["gpt-5.4", "sonnet"],
   "max_rounds": 3,
+  "seed_batch": {
+    "actor": "opus",
+    "collected_by": "opus",
+    "items": [
+      {
+        "key": "seed-1",
+        "source": "repo/path:1-20",
+        "kind": "reference",
+        "statement": "A concrete starting fact.",
+        "excerpt": "The exact supporting excerpt."
+      }
+    ]
+  },
   "agent": {
-    "cmd": ["go", "run", "./cmd/mock-agent", "fixtures/minigit-plan.json"],
-    "cwd": "..",
-    "timeout_ms": 10000
+    "cmd": [
+      "go",
+      "run",
+      "./cmd/claude-agent",
+      "--workspace",
+      "/absolute/path/to/target-repo",
+      "--model",
+      "sonnet",
+      "--settings",
+      "/absolute/path/to/minimal-claude-settings.json"
+    ],
+    "cwd": "/absolute/path/to/roundtable-kernel",
+    "timeout_ms": 300000
+  },
+  "actors": {
+    "gpt-5.4": {
+      "cmd": [
+        "go",
+        "run",
+        "./cmd/codex-agent",
+        "--workspace",
+        "/absolute/path/to/target-repo",
+        "--model",
+        "gpt-5.4",
+        "--sandbox",
+        "read-only"
+      ],
+      "cwd": "/absolute/path/to/roundtable-kernel",
+      "timeout_ms": 300000
+    }
   }
 }
 ```
 
-For every phase, the adapter sends one JSON document on stdin:
+For every phase, the kernel sends one JSON document to the selected agent command over stdin:
 
 ```json
 {
@@ -136,93 +143,66 @@ The command must print one JSON document to stdout:
 
 - `explore` / `re-explore`: `{ "items": [...] }`
 - `propose`: `{ "proposal": { ... } }`
-- `review`: `{ "findings": [{ ... evidence_ids ... }] }`
+- `review`: `{ "findings": [...] }`
 - `adjudicate`: `{ "verdict": { ... } }`
 
-This keeps the kernel ignorant of providers. Real CLIs can sit behind a thin wrapper that only translates prompts and JSON.
+## Wrappers
 
-## CLI Wrappers
+Two wrappers are included:
 
-Two Go wrappers are included:
-
-- [`cmd/claude-agent/main.go`](/Users/yansir/code/52/roundtable-kernel/cmd/claude-agent/main.go): calls `${CLAUDE_BIN:-claude} -p --output-format json --json-schema ...` with isolated settings/MCP defaults and extracts `result.structured_output`
-- [`cmd/codex-agent/main.go`](/Users/yansir/code/52/roundtable-kernel/cmd/codex-agent/main.go): calls `codex exec --output-schema ... --output-last-message ...`
+- [cmd/claude-agent/main.go](/Users/yansir/code/52/roundtable-kernel/cmd/claude-agent/main.go)
+- [cmd/codex-agent/main.go](/Users/yansir/code/52/roundtable-kernel/cmd/codex-agent/main.go)
 
 Both wrappers:
 
-- read one roundtable request JSON document from stdin
-- build a phase-specific prompt plus JSON Schema
+- read one roundtable request from stdin
+- build a phase-specific prompt and schema
 - return one semantic JSON document on stdout
 - keep provider/runtime details out of the kernel
 
-The Claude wrapper defaults to a minimal runtime surface:
-
-- `--setting-sources ""`
-- `--strict-mcp-config`
-- `--mcp-config '{"mcpServers":{}}'`
-- `--disable-slash-commands`
-
-This removes ambient user/project MCP and plugin drift from roundtable runs while still allowing an explicit `--settings` file.
-
-Claude authentication can be injected entirely through environment variables. The exec adapter already merges the parent shell environment with optional `agent.env` / `actors.<name>.env` overrides, so you do not need to hardcode credentials in the repository. Prefer launching runs like this:
+Claude auth can be injected entirely through environment variables. For example:
 
 ```bash
 ANTHROPIC_BASE_URL="https://your-relay.example" \
 ANTHROPIC_AUTH_TOKEN="..." \
-go run ./cmd/rtk run exec my-session /absolute/path/to/spec.json --force
+go run ./cmd/rtk run my-session /absolute/path/to/spec.json --force
 ```
 
-If you need a different binary, set `CLAUDE_BIN=ccc` or pass `--bin ccc` to the wrapper. Telemetry records only environment key names, never credential values.
+## Durable Outputs
 
-Runtime execution remains observable through telemetry events such as:
+Each run writes two durable artifacts:
 
-- `session_started` / `session_finished`
-- `phase_started` / `phase_succeeded` / `phase_failed`
-- `command_started` / `command_finished` / `command_failed`
+- `sessions/<id>.json`: semantic truth
+- `telemetry/<id>.jsonl`: runtime telemetry sidecar
 
-Each command event records the sanitized argv, cwd, env key names, duration, exit code, and clipped stdout/stderr excerpts.
+This split is intentional. UI and operators can read both, but only the session file is source of truth.
 
-The fastest way to wire a real discussion is to copy [`examples/runtime-spec.template.json`](/Users/yansir/code/52/roundtable-kernel/examples/runtime-spec.template.json), replace `__TARGET_REPO__` and `__CLAUDE_SETTINGS__`, then run:
+## UI
 
-```bash
-go run ./cmd/rtk run exec my-session /absolute/path/to/spec.json --force
-```
+The UI serves:
 
-## Fixture Shape
+- `GET /api/sessions`
+- `GET /api/session/:id`
+- `GET /api/telemetry/:id`
+- `GET /api/telemetry/:id?since=N`
 
-The fixture adapter is explicit about who gathered evidence and in which phase:
+The panel is meant to answer two human questions quickly:
 
-```json
-{
-  "seed_batch": {
-    "actor": "chair",
-    "items": [{ "key": "..." }]
-  },
-  "rounds": [
-    {
-      "evidence_batches": [
-        {
-          "phase": "re-explore",
-          "actor": "sonnet",
-          "items": [{ "key": "..." }]
-        }
-      ],
-      "proposal": { "summary": "..." },
-      "findings_against_proposal": [],
-      "verdict": null
-    }
-  ]
-}
-```
+- What does the kernel currently believe?
+- What did the agents actually do while producing that state?
 
-This is intentional. The adapter should not guess which actor produced a piece of evidence from incidental fields like `collected_by`.
+## Design Constraints
 
-## What This Prototype Deliberately Omits
+- Events are observability only, not state.
+- Evidence IDs are runtime-assigned.
+- A `supported` finding must cite evidence IDs.
+- A `gap` finding must cite none.
+- Severity lives on findings, not verdict decisions.
+- A clean critic pass converges even if adjudication is skipped.
 
-- no provider integrations
-- no transport retries
-- no stream-driven UI truth
-- no stream parsing
-- no workflow runner
+## Deliberate Omissions
 
-Those belong outside the kernel. The next layer should adapt providers into this state machine, not leak their runtime behavior into it.
+- no provider-specific kernel logic
+- no stream-driven truth
+- no retry policy in the semantic core
+- no workflow engine outside the bounded roundtable loop

@@ -1,9 +1,7 @@
 package rtk
 
 import (
-	"context"
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"time"
@@ -48,33 +46,6 @@ type AdapterMetadata struct {
 	Chair     string
 	Critics   []string
 	MaxRounds int
-}
-
-type Adapter interface {
-	Kind() string
-	Metadata() AdapterMetadata
-	SeedEvidence(context.Context) ([]EvidenceBatch, error)
-	CollectEvidence(context.Context, CollectEvidenceArgs) ([]EvidenceBatch, error)
-	Propose(context.Context, ProposeArgs) (*Proposal, error)
-	Review(context.Context, ReviewArgs) ([]Finding, error)
-	Adjudicate(context.Context, AdjudicateArgs) (*Verdict, error)
-}
-
-type AdapterConfig struct {
-	FixturePath   string
-	SpecPath      string
-	TelemetryFile string
-}
-
-func CreateAdapter(kind string, config AdapterConfig) (Adapter, error) {
-	switch kind {
-	case "fixture":
-		return newFixtureAdapter(config.FixturePath)
-	case "exec":
-		return newExecAdapter(config.SpecPath, config.TelemetryFile)
-	default:
-		return nil, fmt.Errorf("unsupported adapter kind %s", kind)
-	}
 }
 
 func readJSONFile(path string, target any) error {

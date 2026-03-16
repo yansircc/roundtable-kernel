@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strconv"
 
 	"roundtable-kernel/internal/rtk"
@@ -18,9 +17,7 @@ func fail(message string) {
 
 func usage() {
 	fmt.Println(`usage:
-  go run ./cmd/rtk demo <session-id> [--force]
-  go run ./cmd/rtk run fixture <session-id> <fixture-path> [--force]
-  go run ./cmd/rtk run exec <session-id> <spec-path> [--force]
+  go run ./cmd/rtk run <session-id> <spec-path> [--force]
   go run ./cmd/rtk show <session-id> [--json]
   go run ./cmd/rtk list
   go run ./cmd/rtk serve [--port 3133]`)
@@ -90,48 +87,18 @@ func main() {
 			return
 		}
 		fmt.Println(rtk.RenderSession(session))
-	case "demo":
-		rest, force := extractFlag(args[1:], "--force")
-		if len(rest) < 1 {
-			fail("demo requires a session id")
-		}
-		session, err := rtk.RunSession(context.Background(), rtk.RunSessionOptions{
-			Paths:       paths,
-			AdapterKind: "fixture",
-			AdapterConfig: rtk.AdapterConfig{
-				FixturePath: filepath.Join(root, "fixtures", "evidence-ledger.json"),
-			},
-			SessionID: rest[0],
-			Force:     force,
-		})
-		if err != nil {
-			fail(err.Error())
-		}
-		fmt.Printf("wrote %s\n", rtk.SessionPath(paths, session.ID))
-		fmt.Println(rtk.RenderSession(session))
 	case "run":
 		rest, force := extractFlag(args[1:], "--force")
-		if len(rest) < 3 {
-			fail("run requires adapter kind, session id, and input path")
+		if len(rest) < 2 {
+			fail("run requires session id and spec path")
 		}
-		adapterKind := rest[0]
-		sessionID := rest[1]
-		inputPath := rest[2]
-		config := rtk.AdapterConfig{}
-		switch adapterKind {
-		case "fixture":
-			config.FixturePath = filepath.Clean(inputPath)
-		case "exec":
-			config.SpecPath = filepath.Clean(inputPath)
-		default:
-			fail("run requires adapter kind fixture|exec")
-		}
+		sessionID := rest[0]
+		specPath := rest[1]
 		session, err := rtk.RunSession(context.Background(), rtk.RunSessionOptions{
-			Paths:         paths,
-			AdapterKind:   adapterKind,
-			AdapterConfig: config,
-			SessionID:     sessionID,
-			Force:         force,
+			Paths:     paths,
+			SpecPath:  specPath,
+			SessionID: sessionID,
+			Force:     force,
 		})
 		if err != nil {
 			fail(err.Error())

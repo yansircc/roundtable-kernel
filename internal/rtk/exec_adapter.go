@@ -20,9 +20,9 @@ type execSpec struct {
 	Critics   []string `json:"critics"`
 	MaxRounds int      `json:"max_rounds"`
 	SeedBatch *struct {
-		Actor       string                `json:"actor"`
-		CollectedBy string                `json:"collected_by"`
-		Items       []fixtureEvidenceItem `json:"items"`
+		Actor       string          `json:"actor"`
+		CollectedBy string          `json:"collected_by"`
+		Items       []EvidenceInput `json:"items"`
 	} `json:"seed_batch"`
 	Agent  execAgentSpec            `json:"agent"`
 	Actors map[string]execAgentSpec `json:"actors"`
@@ -34,7 +34,7 @@ type execAdapter struct {
 	telemetryFile string
 }
 
-func newExecAdapter(specPath string, telemetryFile string) (Adapter, error) {
+func newExecAdapter(specPath string, telemetryFile string) (*execAdapter, error) {
 	spec := execSpec{}
 	resolved := filepath.Clean(specPath)
 	if err := readJSONFile(resolved, &spec); err != nil {
@@ -54,8 +54,6 @@ func newExecAdapter(specPath string, telemetryFile string) (Adapter, error) {
 	}
 	return &execAdapter{spec: spec, specDir: filepath.Dir(resolved), telemetryFile: telemetryFile}, nil
 }
-
-func (e *execAdapter) Kind() string { return "exec" }
 
 func (e *execAdapter) Metadata() AdapterMetadata {
 	return AdapterMetadata{
@@ -183,7 +181,7 @@ func (e *execAdapter) SeedEvidence(ctx context.Context) ([]EvidenceBatch, error)
 		}
 	}
 	return []EvidenceBatch{{
-		Items:       toEvidenceInput(e.spec.SeedBatch.Items),
+		Items:       append([]EvidenceInput{}, e.spec.SeedBatch.Items...),
 		CollectedBy: collectedBy,
 		Phase:       "seed",
 	}}, nil

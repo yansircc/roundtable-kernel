@@ -3,11 +3,10 @@ package rtk
 import "context"
 
 type RunSessionOptions struct {
-	Paths         Paths
-	AdapterKind   string
-	AdapterConfig AdapterConfig
-	SessionID     string
-	Force         bool
+	Paths     Paths
+	SpecPath  string
+	SessionID string
+	Force     bool
 }
 
 func failSession(paths Paths, session *Session, telemetryFile string, runErr error) (*Session, error) {
@@ -38,12 +37,12 @@ func failSession(paths Paths, session *Session, telemetryFile string, runErr err
 }
 
 func RunSession(ctx context.Context, options RunSessionOptions) (*Session, error) {
-	bootstrap, err := CreateAdapter(options.AdapterKind, options.AdapterConfig)
+	bootstrap, err := newExecAdapter(options.SpecPath, "")
 	if err != nil {
 		return nil, err
 	}
 	metadata := bootstrap.Metadata()
-	session, err := NewSession(options.SessionID, metadata.Topic, metadata.Chair, metadata.Critics, metadata.MaxRounds, bootstrap.Kind())
+	session, err := NewSession(options.SessionID, metadata.Topic, metadata.Chair, metadata.Critics, metadata.MaxRounds, "exec")
 	if err != nil {
 		return nil, err
 	}
@@ -54,11 +53,7 @@ func RunSession(ctx context.Context, options RunSessionOptions) (*Session, error
 	if err != nil {
 		return nil, err
 	}
-	adapter, err := CreateAdapter(options.AdapterKind, AdapterConfig{
-		FixturePath:   options.AdapterConfig.FixturePath,
-		SpecPath:      options.AdapterConfig.SpecPath,
-		TelemetryFile: telemetryFile,
-	})
+	adapter, err := newExecAdapter(options.SpecPath, telemetryFile)
 	if err != nil {
 		return nil, err
 	}
