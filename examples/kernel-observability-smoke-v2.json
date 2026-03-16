@@ -13,8 +13,9 @@
   },
   "agent": {
     "cmd": [
-      "node",
-      "examples/claude-agent.js",
+      "go",
+      "run",
+      "./cmd/claude-agent",
       "--workspace",
       "/Users/yansir/code/52/roundtable-kernel",
       "--model",
@@ -30,8 +31,9 @@
   "actors": {
     "opus": {
       "cmd": [
-        "node",
-        "examples/claude-agent.js",
+        "go",
+        "run",
+        "./cmd/claude-agent",
         "--workspace",
         "/Users/yansir/code/52/roundtable-kernel",
         "--model",
@@ -44,8 +46,9 @@
     },
     "sonnet": {
       "cmd": [
-        "node",
-        "examples/claude-agent.js",
+        "go",
+        "run",
+        "./cmd/claude-agent",
         "--workspace",
         "/Users/yansir/code/52/roundtable-kernel",
         "--model",
@@ -58,8 +61,9 @@
     },
     "gpt-5.4": {
       "cmd": [
-        "node",
-        "examples/codex-agent.js",
+        "go",
+        "run",
+        "./cmd/codex-agent",
         "--workspace",
         "/Users/yansir/code/52/roundtable-kernel",
         "--model",

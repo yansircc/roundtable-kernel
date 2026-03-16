@@ -28,8 +28,9 @@
   },
   "agent": {
     "cmd": [
-      "node",
-      "examples/mock-agent.js",
+      "go",
+      "run",
+      "./cmd/mock-agent",
       "fixtures/minigit-plan.json"
     ],
     "cwd": "..",

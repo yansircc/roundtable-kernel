@@ -13,8 +13,9 @@
   },
   "agent": {
     "cmd": [
-      "node",
-      "examples/claude-agent.js",
+      "go",
+      "run",
+      "./cmd/claude-agent",
       "--workspace",
       "__TARGET_REPO__",
       "--model",
@@ -26,8 +27,9 @@
   "actors": {
     "opus": {
       "cmd": [
-        "node",
-        "examples/claude-agent.js",
+        "go",
+        "run",
+        "./cmd/claude-agent",
         "--workspace",
         "__TARGET_REPO__",
         "--model",
@@ -38,8 +40,9 @@
     },
     "sonnet": {
       "cmd": [
-        "node",
-        "examples/claude-agent.js",
+        "go",
+        "run",
+        "./cmd/claude-agent",
         "--workspace",
         "__TARGET_REPO__",
         "--model",
@@ -50,8 +53,9 @@
     },
     "gpt-5.4": {
       "cmd": [
-        "node",
-        "examples/codex-agent.js",
+        "go",
+        "run",
+        "./cmd/codex-agent",
         "--workspace",
         "__TARGET_REPO__",
         "--model",

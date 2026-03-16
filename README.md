@@ -1,6 +1,6 @@
 # Roundtable Kernel
 
-`roundtable-kernel` is a clean-room prototype for one idea:
+`roundtable-kernel` is now a Go-first clean-room prototype for one idea:
 
 ```text
 provider is the change axis
@@ -42,15 +42,20 @@ Convergence is decided from critic findings, not from the chair's self-report.
 
 ## Layout
 
-- [`src/domain.js`](/Users/yansir/code/52/roundtable-kernel/src/domain.js): value-level invariants
-- [`src/kernel.js`](/Users/yansir/code/52/roundtable-kernel/src/kernel.js): session state machine
-- [`src/orchestrator.js`](/Users/yansir/code/52/roundtable-kernel/src/orchestrator.js): bounded round runner
-- [`src/adapters/fixture.js`](/Users/yansir/code/52/roundtable-kernel/src/adapters/fixture.js): fixture adapter
-- [`src/adapters/exec.js`](/Users/yansir/code/52/roundtable-kernel/src/adapters/exec.js): shell-command adapter for real runtimes
-- [`src/store.js`](/Users/yansir/code/52/roundtable-kernel/src/store.js): JSON persistence
-- [`src/view.js`](/Users/yansir/code/52/roundtable-kernel/src/view.js): derived read models for UI/API
-- [`src/server.js`](/Users/yansir/code/52/roundtable-kernel/src/server.js): HTTP API + static UI server
-- [`src/cli.js`](/Users/yansir/code/52/roundtable-kernel/src/cli.js): minimal CLI
+- [`cmd/rtk/main.go`](/Users/yansir/code/52/roundtable-kernel/cmd/rtk/main.go): Go CLI entrypoint
+- [`internal/rtk/kernel.go`](/Users/yansir/code/52/roundtable-kernel/internal/rtk/kernel.go): session state machine
+- [`internal/rtk/orchestrator.go`](/Users/yansir/code/52/roundtable-kernel/internal/rtk/orchestrator.go): bounded round runner
+- [`internal/rtk/fixture_adapter.go`](/Users/yansir/code/52/roundtable-kernel/internal/rtk/fixture_adapter.go): fixture adapter
+- [`internal/rtk/exec_adapter.go`](/Users/yansir/code/52/roundtable-kernel/internal/rtk/exec_adapter.go): shell-command adapter for real runtimes
+- [`internal/rtk/store.go`](/Users/yansir/code/52/roundtable-kernel/internal/rtk/store.go): JSON persistence
+- [`internal/rtk/view.go`](/Users/yansir/code/52/roundtable-kernel/internal/rtk/view.go): derived read models for UI/API
+- [`internal/rtk/server.go`](/Users/yansir/code/52/roundtable-kernel/internal/rtk/server.go): HTTP API + static UI server
+- [`internal/rtk/command.go`](/Users/yansir/code/52/roundtable-kernel/internal/rtk/command.go): subprocess runner + telemetry
+- [`internal/rtk/agentlib.go`](/Users/yansir/code/52/roundtable-kernel/internal/rtk/agentlib.go): provider-wrapper prompt/schema helpers
+- [`cmd/claude-agent/main.go`](/Users/yansir/code/52/roundtable-kernel/cmd/claude-agent/main.go): Go Claude CLI wrapper
+- [`cmd/codex-agent/main.go`](/Users/yansir/code/52/roundtable-kernel/cmd/codex-agent/main.go): Go Codex CLI wrapper
+- [`cmd/mock-agent/main.go`](/Users/yansir/code/52/roundtable-kernel/cmd/mock-agent/main.go): Go deterministic mock runtime
+- [`src/*.js`](/Users/yansir/code/52/roundtable-kernel/src/cli.js): legacy JS reference implementation kept for comparison during migration
 - [`fixtures/evidence-ledger.json`](/Users/yansir/code/52/roundtable-kernel/fixtures/evidence-ledger.json): 2-round semantic redesign sample
 - [`fixtures/minigit-plan.json`](/Users/yansir/code/52/roundtable-kernel/fixtures/minigit-plan.json): 3-round planning sample
 - [`fixtures/minigit-exec.json`](/Users/yansir/code/52/roundtable-kernel/fixtures/minigit-exec.json): exec-adapter sample config
@@ -64,18 +69,19 @@ Convergence is decided from critic findings, not from the chair's self-report.
 ```bash
 cd /Users/yansir/code/52/roundtable-kernel
 
-node src/cli.js demo evidence-ledger --force
-node src/cli.js run fixture minigit-plan fixtures/minigit-plan.json --force
-node src/cli.js run exec minigit-exec fixtures/minigit-exec.json --force
-node src/cli.js show evidence-ledger
-node src/cli.js list
+go run ./cmd/rtk demo evidence-ledger --force
+go run ./cmd/rtk run fixture minigit-plan fixtures/minigit-plan.json --force
+go run ./cmd/rtk run exec minigit-exec fixtures/minigit-exec.json --force
+go run ./cmd/rtk show evidence-ledger
+go run ./cmd/rtk list
+go run ./cmd/rtk serve --port 3133
 npm --prefix ui install
 npm run ui:build
-npm run serve
 ```
 
 `demo` is just a shortcut for the bundled `evidence-ledger` fixture. `run fixture` is the generic adapter entrypoint.
 `run exec` shells out to a configured command and admits only semantic JSON back into the kernel.
+`serve` is now implemented in Go; the Svelte app remains a static asset build step only.
 
 The dashboard defaults to [http://127.0.0.1:3133](http://127.0.0.1:3133) and serves:
 
@@ -105,7 +111,7 @@ The config names one command template plus optional per-actor overrides:
   "critics": ["gpt-5.4", "sonnet"],
   "max_rounds": 3,
   "agent": {
-    "cmd": ["node", "examples/mock-agent.js", "fixtures/minigit-plan.json"],
+    "cmd": ["go", "run", "./cmd/mock-agent", "fixtures/minigit-plan.json"],
     "cwd": "..",
     "timeout_ms": 10000
   }
@@ -137,10 +143,12 @@ This keeps the kernel ignorant of providers. Real CLIs can sit behind a thin wra
 
 ## CLI Wrappers
 
-Two thin wrappers are included:
+Two Go wrappers are included:
 
-- [`examples/claude-agent.js`](/Users/yansir/code/52/roundtable-kernel/examples/claude-agent.js): calls `${CLAUDE_BIN:-claude} -p --output-format json --json-schema ...` with isolated settings/MCP defaults and extracts `result.structured_output`
-- [`examples/codex-agent.js`](/Users/yansir/code/52/roundtable-kernel/examples/codex-agent.js): calls `codex exec --output-schema ... --output-last-message ...`
+- [`cmd/claude-agent/main.go`](/Users/yansir/code/52/roundtable-kernel/cmd/claude-agent/main.go): calls `${CLAUDE_BIN:-claude} -p --output-format json --json-schema ...` with isolated settings/MCP defaults and extracts `result.structured_output`
+- [`cmd/codex-agent/main.go`](/Users/yansir/code/52/roundtable-kernel/cmd/codex-agent/main.go): calls `codex exec --output-schema ... --output-last-message ...`
+
+The older JS wrappers remain in [`examples/`](/Users/yansir/code/52/roundtable-kernel/examples/claude-agent.js) as migration references, but the default runtime path is now Go.
 
 Both wrappers:
 
@@ -163,7 +171,7 @@ Claude authentication can be injected entirely through environment variables. Th
 ```bash
 ANTHROPIC_BASE_URL="https://your-relay.example" \
 ANTHROPIC_AUTH_TOKEN="..." \
-node src/cli.js run exec my-session /absolute/path/to/spec.json --force
+go run ./cmd/rtk run exec my-session /absolute/path/to/spec.json --force
 ```
 
 If you need a different binary, set `CLAUDE_BIN=ccc` or pass `--bin ccc` to the wrapper. Telemetry records only environment key names, never credential values.
@@ -179,7 +187,7 @@ Each command event records the sanitized argv, cwd, env key names, duration, exi
 The fastest way to wire a real discussion is to copy [`examples/runtime-spec.template.json`](/Users/yansir/code/52/roundtable-kernel/examples/runtime-spec.template.json), replace `__TARGET_REPO__` and `__CLAUDE_SETTINGS__`, then run:
 
 ```bash
-node src/cli.js run exec my-session /absolute/path/to/spec.json --force
+go run ./cmd/rtk run exec my-session /absolute/path/to/spec.json --force
 ```
 
 ## Fixture Shape
