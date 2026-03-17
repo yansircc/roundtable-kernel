@@ -43,6 +43,12 @@ make install
 rtk version
 ```
 
+If `rtk` is not found after `make install`, add Go's bin directory to your shell `PATH` and reload the shell:
+
+```bash
+export PATH="$(go env GOPATH)/bin:$PATH"
+```
+
 If you want `rtk serve` from a source checkout, build the UI bundle once:
 
 ```bash
