@@ -89,7 +89,7 @@ var commandDocs = map[string]commandDoc{
 			"rtk serve [--port 3133]",
 		},
 		details: []string{
-			"The binary serves API endpoints plus the static UI bundle under `ui/dist`.",
+			"The binary serves API endpoints plus the static UI bundle from the workspace `ui/dist` or a bundled sibling `../ui/dist` next to the executable.",
 			"Release archives include the built UI; source checkouts should run `npm --prefix ui run build` first.",
 		},
 	},

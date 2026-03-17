@@ -4,3 +4,7 @@ ui/node_modules/
 ui/dist/
 /rtk
 dist/
+!.claude/skills/rtk/ui/dist/
+!.claude/skills/rtk/ui/dist/index.html
+!.claude/skills/rtk/ui/dist/assets/
+!.claude/skills/rtk/ui/dist/assets/*

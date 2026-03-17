@@ -63,7 +63,7 @@ func safeStaticPath(root string, urlPath string) (string, bool) {
 
 func serveStatic(paths Paths, w http.ResponseWriter, urlPath string) {
 	if _, err := os.Stat(paths.UIRoot); err != nil {
-		sendText(w, 503, "UI assets missing. Run `npm --prefix ui install && npm --prefix ui run build`.\n")
+		sendText(w, 503, "UI assets missing. Build workspace assets with `npm --prefix ui install && npm --prefix ui run build`, or refresh the bundled skill assets with `./scripts/package-rtk-skill.sh`.\n")
 		return
 	}
 	target := filepath.Join(paths.UIRoot, "index.html")

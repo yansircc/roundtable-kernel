@@ -1,13 +1,15 @@
 ---
 name: rtk
-description: Use when you need to run, inspect, or participate in roundtable-kernel sessions through the `rtk` CLI. Covers autonomous runs, live chair/critic handoff, durable session truth, and common commands such as `help`, `show`, `wait`, `next`, and `apply`.
+description: Use when you need to run, inspect, or participate in roundtable-kernel sessions through the bundled `rtk` runtime. Covers autonomous runs, live chair/critic handoff, durable session truth, and common commands such as `help`, `show`, `wait`, `next`, and `apply`.
 ---
 
 # RTK
 
 Use this skill when the task is about operating Roundtable Kernel rather than editing its internals.
 
-Start with `rtk -h` or `rtk help <command>` if the exact subcommand is unclear.
+Prefer the bundled launcher at `.codex/skills/rtk/scripts/rtk`. It carries its own `rtk` binary and `ui/dist`, so do not require a global install unless the bundled launcher is unavailable.
+
+Start with `.codex/skills/rtk/scripts/rtk -h` or `.codex/skills/rtk/scripts/rtk help <command>` if the exact subcommand is unclear.
 
 ## Mental Model
 
@@ -25,35 +27,36 @@ Do not infer semantic state from stream logs when `show`, `wait`, or the session
 Autonomous:
 
 ```bash
-rtk run my-session /absolute/path/to/spec.json --force
-rtk show my-session
+.codex/skills/rtk/scripts/rtk run my-session /absolute/path/to/spec.json --force
+.codex/skills/rtk/scripts/rtk show my-session
 ```
 
 Live chair / critic:
 
 ```bash
-rtk init my-session /absolute/path/to/spec.json --force
-rtk next my-session --actor chair
-rtk apply my-session result.json
-rtk wait my-session --until turn --actor critic
+.codex/skills/rtk/scripts/rtk init my-session /absolute/path/to/spec.json --force
+.codex/skills/rtk/scripts/rtk next my-session --actor chair
+.codex/skills/rtk/scripts/rtk apply my-session result.json
+.codex/skills/rtk/scripts/rtk wait my-session --until turn --actor critic
 ```
 
 Useful waits:
 
 ```bash
-rtk wait my-session --until turn --actor critic
-rtk wait my-session --until turn --actor chair
-rtk wait my-session --until terminal
-rtk wait my-session --until change --since 2026-03-17T04:07:07.708Z
+.codex/skills/rtk/scripts/rtk wait my-session --until turn --actor critic
+.codex/skills/rtk/scripts/rtk wait my-session --until turn --actor chair
+.codex/skills/rtk/scripts/rtk wait my-session --until terminal
+.codex/skills/rtk/scripts/rtk wait my-session --until change --since 2026-03-17T04:07:07.708Z
 ```
 
 ## Operating Rules
 
-- Use `rtk show <session>` when you need the durable session state.
-- Use `rtk wait` instead of ad hoc polling loops.
-- Use `rtk list` to discover existing sessions.
-- Use `rtk serve --port 3133` when a human needs the web UI.
-- If `rtk` is not on `PATH`, build it with `make build` or install it with `make install`.
+- Use `.codex/skills/rtk/scripts/rtk show <session>` when you need the durable session state.
+- Use `.codex/skills/rtk/scripts/rtk wait` instead of ad hoc polling loops.
+- Use `.codex/skills/rtk/scripts/rtk list` to discover existing sessions.
+- Use `.codex/skills/rtk/scripts/rtk serve --port 3133` when a human needs the web UI.
+- The bundled launcher auto-points `serve` at the skill-local `ui/dist`.
+- To export the same self-contained skill into a plugin-style directory, run `./scripts/package-rtk-skill.sh /path/to/plugin/skills/rtk` from the repo root.
 
 ## When Not To Use
 

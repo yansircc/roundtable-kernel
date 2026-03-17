@@ -297,7 +297,21 @@ The panel is meant to answer two human questions quickly:
 
 The repo includes a repo-local Codex skill at [.codex/skills/rtk/SKILL.md](/Users/yansir/code/52/roundtable-kernel/.codex/skills/rtk/SKILL.md).
 
-The skill is intentionally small. It teaches agents to prefer `rtk` over custom polling or log scraping:
+The skill is self-contained. It bundles a launcher under [.codex/skills/rtk/scripts/rtk](/Users/yansir/code/52/roundtable-kernel/.codex/skills/rtk/scripts/rtk), a platform-specific `rtk` binary under `scripts/`, and static UI assets under `ui/dist/`, so agents do not need a separate global `rtk` install.
+
+Refresh the bundled assets with:
+
+```bash
+./scripts/package-rtk-skill.sh
+```
+
+Export the same self-contained skill into a plugin-style directory with:
+
+```bash
+./scripts/package-rtk-skill.sh /absolute/path/to/plugin/skills/rtk
+```
+
+The skill still teaches agents to prefer `rtk` over custom polling or log scraping:
 
 - use `rtk show` for durable state
 - use `rtk wait` for blocking handoff

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 )
 
 type Paths struct {
@@ -20,8 +21,39 @@ func ResolvePaths(root string) Paths {
 		Root:          root,
 		SessionsRoot:  filepath.Join(root, "sessions"),
 		TelemetryRoot: filepath.Join(root, "telemetry"),
-		UIRoot:        filepath.Join(root, "ui", "dist"),
+		UIRoot:        resolveUIRoot(root),
 	}
+}
+
+func preferredUIRoot(root string, executable string, override string, exists func(string) bool) string {
+	if strings.TrimSpace(override) != "" {
+		return filepath.Clean(override)
+	}
+	workspaceUIRoot := filepath.Join(root, "ui", "dist")
+	if exists(workspaceUIRoot) {
+		return workspaceUIRoot
+	}
+	if executable != "" {
+		bundledUIRoot := filepath.Join(filepath.Dir(executable), "..", "ui", "dist")
+		if exists(bundledUIRoot) {
+			return bundledUIRoot
+		}
+	}
+	return workspaceUIRoot
+}
+
+func resolveUIRoot(root string) string {
+	executable := ""
+	if path, err := os.Executable(); err == nil {
+		if resolved, err := filepath.EvalSymlinks(path); err == nil {
+			path = resolved
+		}
+		executable = path
+	}
+	return preferredUIRoot(root, executable, os.Getenv("ROUNDTABLE_UI_ROOT"), func(path string) bool {
+		info, err := os.Stat(path)
+		return err == nil && info.IsDir()
+	})
 }
 
 func ensureDir(dir string) error {
