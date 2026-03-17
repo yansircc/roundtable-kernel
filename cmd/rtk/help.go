@@ -56,7 +56,7 @@ var commandDocs = map[string]commandDoc{
 	"wait": {
 		summary: "Block until the session changes, a specific actor turn is ready, or the session becomes terminal.",
 		usage: []string{
-			"rtk wait <session-id> [--until change|turn|terminal] [--actor name] [--since updated_at] [--timeout-ms 300000]",
+			"rtk wait <session-id> [--until change|turn|terminal] [--actor name] [--since updated_at] [--timeout-ms 600000]",
 		},
 		details: []string{
 			"Use `--until turn --actor critic` to hand work to a critic window.",

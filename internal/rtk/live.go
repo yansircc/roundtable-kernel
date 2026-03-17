@@ -194,10 +194,10 @@ func previewNextStep(session *Session) (*Step, string, bool, error) {
 		}
 		return nil, "internal_transition", false, nil
 	}
-	nextRound := session.Status.Round + 1
-	if nextRound > session.MaxRounds {
+	if roundLimitExhausted(session.MaxRounds, session.Status.Round) {
 		return nil, "exhausted", true, nil
 	}
+	nextRound := session.Status.Round + 1
 	request, inputSummary, err := buildAgentRequest(session, nextRound, session.Chair, "explore")
 	if err != nil {
 		return nil, "", false, err
@@ -254,7 +254,7 @@ func advanceInternal(session *Session, paths Paths) error {
 			if _, err := ApplyRound(session); err != nil {
 				return err
 			}
-			if !session.Status.Converged && session.Status.Round == session.MaxRounds {
+			if !session.Status.Converged && roundLimitExhausted(session.MaxRounds, session.Status.Round) {
 				session.Status.State = "exhausted"
 			}
 			if err := persistSession(paths, session); err != nil {
@@ -266,7 +266,7 @@ func advanceInternal(session *Session, paths Paths) error {
 			if _, err := ApplyRound(session); err != nil {
 				return err
 			}
-			if !session.Status.Converged && session.Status.Round == session.MaxRounds {
+			if !session.Status.Converged && roundLimitExhausted(session.MaxRounds, session.Status.Round) {
 				session.Status.State = "exhausted"
 			}
 			if err := persistSession(paths, session); err != nil {

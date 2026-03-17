@@ -46,7 +46,7 @@ func main() {
 	if sandbox == "" {
 		sandbox = "read-only"
 	}
-	timeoutMS := 180000
+	timeoutMS := rtk.DefaultTimeoutMS
 	if value := os.Getenv("CODEX_TIMEOUT_MS"); value != "" {
 		if parsed, err := strconv.Atoi(value); err == nil && parsed > 0 {
 			timeoutMS = parsed

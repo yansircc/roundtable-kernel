@@ -113,7 +113,7 @@ type Session struct {
 	CreatedAt           string        `json:"created_at"`
 	Chair               string        `json:"chair"`
 	Critics             []string      `json:"critics"`
-	MaxRounds           int           `json:"max_rounds"`
+	MaxRounds           *int          `json:"max_rounds"`
 	Adapter             string        `json:"adapter"`
 	Evidence            []Evidence    `json:"evidence"`
 	Rounds              []RoundRecord `json:"rounds"`
@@ -127,7 +127,7 @@ type SessionSummary struct {
 	Topic                 string                    `json:"topic"`
 	Chair                 string                    `json:"chair"`
 	Critics               []string                  `json:"critics"`
-	MaxRounds             int                       `json:"max_rounds"`
+	MaxRounds             *int                      `json:"max_rounds"`
 	Round                 int                       `json:"round"`
 	State                 string                    `json:"state"`
 	Converged             bool                      `json:"converged"`
@@ -159,6 +159,11 @@ func stringPtr(value string) *string {
 	if value == "" {
 		return nil
 	}
+	copy := value
+	return &copy
+}
+
+func intPtr(value int) *int {
 	copy := value
 	return &copy
 }

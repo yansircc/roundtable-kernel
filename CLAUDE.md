@@ -28,7 +28,7 @@ Go 1.22+ required. Node.js 20+ for UI builds.
 
 ## Architecture
 
-Roundtable Kernel (`rtk`) is a bounded multi-LLM deliberation loop. It orchestrates rounds of chair/critic debate until convergence or exhaustion.
+Roundtable Kernel (`rtk`) is a multi-LLM deliberation loop. It orchestrates rounds of chair/critic debate until convergence or bounded exhaustion.
 
 ### Two Operating Modes
 

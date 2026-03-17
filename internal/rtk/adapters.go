@@ -45,7 +45,7 @@ type AdapterMetadata struct {
 	Topic     string
 	Chair     string
 	Critics   []string
-	MaxRounds int
+	MaxRounds *int
 }
 
 func readJSONFile(path string, target any) error {

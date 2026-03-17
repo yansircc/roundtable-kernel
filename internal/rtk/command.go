@@ -27,6 +27,7 @@ type Chunk struct {
 
 type CommandOptions struct {
 	Cmd           []string
+	Context       context.Context
 	Cwd           string
 	Env           map[string]string
 	Input         any
@@ -109,7 +110,7 @@ func RunCommand(options CommandOptions) (string, string, error) {
 	}
 	timeout := options.Timeout
 	if timeout <= 0 {
-		timeout = time.Minute
+		timeout = DefaultTimeout
 	}
 	startedAt := time.Now()
 	commandEvent(options.Telemetry, "command_started", map[string]any{
@@ -117,7 +118,11 @@ func RunCommand(options CommandOptions) (string, string, error) {
 		"timeout_ms": timeout.Milliseconds(),
 	})
 
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	baseCtx := options.Context
+	if baseCtx == nil {
+		baseCtx = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(baseCtx, timeout)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, options.Cmd[0], options.Cmd[1:]...)

@@ -95,7 +95,7 @@ func main() {
 	if args.Has("strict-mcp-config") {
 		strictMCP = true
 	}
-	timeoutMS := 180000
+	timeoutMS := rtk.DefaultTimeoutMS
 	if value := os.Getenv("CLAUDE_TIMEOUT_MS"); value != "" {
 		if parsed, err := strconv.Atoi(value); err == nil && parsed > 0 {
 			timeoutMS = parsed

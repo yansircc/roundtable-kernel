@@ -17,7 +17,7 @@ type execSpec struct {
 	Topic     string   `json:"topic"`
 	Chair     string   `json:"chair"`
 	Critics   []string `json:"critics"`
-	MaxRounds int      `json:"max_rounds"`
+	MaxRounds *int     `json:"max_rounds"`
 	SeedBatch *struct {
 		Actor       string          `json:"actor"`
 		CollectedBy string          `json:"collected_by"`
@@ -45,7 +45,7 @@ func newExecAdapter(specPath string, telemetryFile string) (*execAdapter, error)
 	if spec.Chair == "" {
 		return nil, fmt.Errorf("exec spec.chair must be a non-empty string")
 	}
-	if spec.MaxRounds <= 0 {
+	if spec.MaxRounds != nil && *spec.MaxRounds <= 0 {
 		return nil, fmt.Errorf("exec spec.max_rounds must be a positive integer")
 	}
 	if len(spec.Agent.Cmd) == 0 {
@@ -59,7 +59,7 @@ func (e *execAdapter) Metadata() AdapterMetadata {
 		Topic:     e.spec.Topic,
 		Chair:     e.spec.Chair,
 		Critics:   append([]string{}, e.spec.Critics...),
-		MaxRounds: e.spec.MaxRounds,
+		MaxRounds: cloneIntPtr(e.spec.MaxRounds),
 	}
 }
 
@@ -85,7 +85,7 @@ func (e *execAdapter) resolveAgent(actor string) execAgentSpec {
 		}
 	}
 	if merged.TimeoutMS <= 0 {
-		merged.TimeoutMS = 60000
+		merged.TimeoutMS = DefaultTimeoutMS
 	}
 	if merged.Env == nil {
 		merged.Env = map[string]string{}
@@ -125,6 +125,7 @@ func (e *execAdapter) invoke(ctx context.Context, actor string, payload map[stri
 	env["ROUNDTABLE_ADAPTER_KIND"] = "exec"
 	return RunJSONCommand(CommandOptions{
 		Cmd:     agent.Cmd,
+		Context: ctx,
 		Cwd:     e.resolveCwd(agent.Cwd),
 		Env:     env,
 		Timeout: durationMS(agent.TimeoutMS),

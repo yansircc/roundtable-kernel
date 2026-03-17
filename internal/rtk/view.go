@@ -83,7 +83,7 @@ func DeriveSessionSummary(session *Session) SessionSummary {
 		Topic:                 session.Topic,
 		Chair:                 session.Chair,
 		Critics:               session.Critics,
-		MaxRounds:             session.MaxRounds,
+		MaxRounds:             cloneIntPtr(session.MaxRounds),
 		Round:                 session.Status.Round,
 		State:                 session.Status.State,
 		Converged:             session.Status.Converged,

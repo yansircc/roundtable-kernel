@@ -4,7 +4,7 @@
 
 `roundtable-kernel` is a small deliberation kernel for multi-LLM discussion.
 
-It does one thing: run a bounded roundtable where semantic truth lives in `evidence`, `findings_against_proposal`, `verdict`, and `convergence`, while streams and provider logs remain observability only.
+It does one thing: run a roundtable where semantic truth lives in `evidence`, `findings_against_proposal`, `verdict`, and `convergence`, while streams and provider logs remain observability only.
 
 ```mermaid
 flowchart LR
@@ -85,7 +85,7 @@ rtk init <session-id> <spec-path> [--force]
 rtk run <session-id> <spec-path> [--force] [--text]
 rtk next <session-id> [--actor name]
 rtk apply <session-id> [result.json|-]
-rtk wait <session-id> [--until change|turn|terminal] [--actor name] [--since updated_at] [--timeout-ms 300000]
+rtk wait <session-id> [--until change|turn|terminal] [--actor name] [--since updated_at] [--timeout-ms 600000]
 rtk show <session-id> [--text]
 rtk list [--text]
 rtk serve [--port 3133]
@@ -169,7 +169,6 @@ Minimal example:
   "topic": "Derive a minimal implementation plan for feature X.",
   "chair": "opus",
   "critics": ["gpt-5.4", "sonnet"],
-  "max_rounds": 3,
   "seed_batch": {
     "actor": "opus",
     "collected_by": "opus",
@@ -196,7 +195,7 @@ Minimal example:
       "/absolute/path/to/minimal-claude-settings.json"
     ],
     "cwd": "/absolute/path/to/roundtable-kernel",
-    "timeout_ms": 300000
+    "timeout_ms": 600000
   },
   "actors": {
     "gpt-5.4": {
@@ -212,11 +211,15 @@ Minimal example:
         "read-only"
       ],
       "cwd": "/absolute/path/to/roundtable-kernel",
-      "timeout_ms": 300000
+      "timeout_ms": 600000
     }
   }
 }
 ```
+
+`max_rounds` is optional. Omit it for an unbounded session, or set a positive integer to cap rounds.
+
+`agent.timeout_ms` and per-actor `timeout_ms` are optional. The default is `600000` (10 minutes).
 
 For every phase, the kernel sends one JSON document to the selected agent command over stdin:
 
@@ -309,4 +312,4 @@ The skill is intentionally small. It teaches agents to prefer `rtk` over custom 
 - no provider-specific kernel logic
 - no stream-driven truth
 - no retry policy in the semantic core
-- no workflow engine outside the bounded roundtable loop
+- no workflow engine outside the roundtable loop

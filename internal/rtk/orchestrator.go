@@ -56,7 +56,7 @@ func RunSession(ctx context.Context, options RunSessionOptions) (*Session, error
 		return failSession(options.Paths, session, telemetryFile, err)
 	}
 
-	for round := 1; round <= session.MaxRounds; round++ {
+	for round := 1; !roundLimitExceeded(session.MaxRounds, round); round++ {
 		if err := runRound(ctx, adapter, session, round, evidenceKeyMap, telemetryFile, options.Paths); err != nil {
 			return failSession(options.Paths, session, telemetryFile, err)
 		}
@@ -65,7 +65,7 @@ func RunSession(ctx context.Context, options RunSessionOptions) (*Session, error
 		}
 	}
 
-	if !session.Status.Converged && session.Status.Round == session.MaxRounds {
+	if !session.Status.Converged && roundLimitExhausted(session.MaxRounds, session.Status.Round) {
 		session.Status.State = "exhausted"
 	}
 	if err := SaveSession(options.Paths, session); err != nil {

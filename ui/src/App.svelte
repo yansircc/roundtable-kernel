@@ -156,15 +156,23 @@
     return actor && phase ? `● ${actor} / ${phase}` : 'idle';
   }
 
+  function roundLimitText(limit) {
+    return limit == null ? 'unbounded' : `${limit}`;
+  }
+
+  function roundProgressText(round, limit, prefix = '') {
+    return `${prefix}${round}/${roundLimitText(limit)}`;
+  }
+
   function sessionMeta(session) {
-    return [`r${session.round}/${session.max_rounds}`, `${session.evidence_count} evidence`, unresolvedText(session.unresolved_high, session.unresolved_medium)].join(' · ');
+    return [roundProgressText(session.round, session.max_rounds, 'r'), `${session.evidence_count} evidence`, unresolvedText(session.unresolved_high, session.unresolved_medium)].join(' · ');
   }
 
   function selectedMeta(session, summary) {
     return [
       `chair ${session.chair}`,
       `critics ${(session.critics || []).join(', ') || 'none'}`,
-      `round ${session.status.round}/${session.max_rounds}`,
+      `round ${roundProgressText(session.status.round, session.max_rounds)}`,
       `${session.evidence.length} evidence`,
       `${unresolvedText(session.status.unresolved_high, session.status.unresolved_medium)} unresolved`,
       `updated ${age(summary?.updated_at)}`,

@@ -13,7 +13,7 @@ func RenderSession(session *Session) string {
 		fmt.Sprintf("critics: %s", strings.Join(session.Critics, ", ")),
 		fmt.Sprintf("adapter: %s", session.Adapter),
 		fmt.Sprintf("status:  %s", session.Status.State),
-		fmt.Sprintf("round:   %d/%d", session.Status.Round, session.MaxRounds),
+		fmt.Sprintf("round:   %s", roundProgressText(session.Status.Round, session.MaxRounds)),
 		fmt.Sprintf("evidence:%4d", len(session.Evidence)),
 		fmt.Sprintf("high:    %d", session.Status.UnresolvedHigh),
 		fmt.Sprintf("medium:  %d", session.Status.UnresolvedMedium),

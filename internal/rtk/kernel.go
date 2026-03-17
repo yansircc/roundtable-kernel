@@ -78,7 +78,7 @@ func roundPhaseIndex(roundRecord *RoundRecord, actor, phase, status string) int 
 	return -1
 }
 
-func NewSession(id, topic, chair string, critics []string, maxRounds int, adapter string) (*Session, error) {
+func NewSession(id, topic, chair string, critics []string, maxRounds *int, adapter string) (*Session, error) {
 	if err := validateString(id, "session id"); err != nil {
 		return nil, err
 	}
@@ -91,8 +91,10 @@ func NewSession(id, topic, chair string, critics []string, maxRounds int, adapte
 	if err := validateString(chair, "chair"); err != nil {
 		return nil, err
 	}
-	if err := invariant(maxRounds > 0, "max_rounds must be a positive integer"); err != nil {
-		return nil, err
+	if maxRounds != nil {
+		if err := invariant(*maxRounds > 0, "max_rounds must be a positive integer"); err != nil {
+			return nil, err
+		}
 	}
 	if err := validateString(adapter, "adapter"); err != nil {
 		return nil, err
@@ -104,7 +106,7 @@ func NewSession(id, topic, chair string, critics []string, maxRounds int, adapte
 		CreatedAt:           nowISO(),
 		Chair:               chair,
 		Critics:             append([]string{}, critics...),
-		MaxRounds:           maxRounds,
+		MaxRounds:           cloneIntPtr(maxRounds),
 		Adapter:             adapter,
 		Evidence:            []Evidence{},
 		Rounds:              []RoundRecord{},

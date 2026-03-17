@@ -23,7 +23,7 @@ func usage() {
   rtk run <session-id> <spec-path> [--force] [--text]
   rtk next <session-id> [--actor name]
   rtk apply <session-id> [result.json|-]
-  rtk wait <session-id> [--until change|turn|terminal] [--actor name] [--since updated_at] [--timeout-ms 300000]
+  rtk wait <session-id> [--until change|turn|terminal] [--actor name] [--since updated_at] [--timeout-ms 600000]
   rtk show <session-id> [--text]
   rtk list [--text]
   rtk serve [--port 3133]`)
@@ -179,7 +179,7 @@ func main() {
 		if until == "" {
 			until = "change"
 		}
-		timeout := 300000
+		timeout := rtk.DefaultTimeoutMS
 		if value := parsed.Value("timeout-ms"); value != "" {
 			parsedTimeout, err := strconv.Atoi(value)
 			if err != nil || parsedTimeout < 0 {

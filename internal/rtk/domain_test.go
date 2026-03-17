@@ -53,7 +53,7 @@ func TestValidateFindingGapRejectsEvidenceIDs(t *testing.T) {
 func TestApplyRoundRequiresVerdictForMaterialFindings(t *testing.T) {
 	t.Parallel()
 
-	session, err := NewSession("test-round", "topic", "chair", []string{"critic"}, 1, "exec")
+	session, err := NewSession("test-round", "topic", "chair", []string{"critic"}, intPtr(1), "exec")
 	if err != nil {
 		t.Fatalf("NewSession: %v", err)
 	}
@@ -87,7 +87,7 @@ func TestApplyRoundRequiresVerdictForMaterialFindings(t *testing.T) {
 func TestApplyRoundConvergesWithoutMaterialFindings(t *testing.T) {
 	t.Parallel()
 
-	session, err := NewSession("test-converge", "topic", "chair", nil, 1, "exec")
+	session, err := NewSession("test-converge", "topic", "chair", nil, intPtr(1), "exec")
 	if err != nil {
 		t.Fatalf("NewSession: %v", err)
 	}
