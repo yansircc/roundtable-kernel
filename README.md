@@ -1,60 +1,153 @@
 # Roundtable Kernel
 
+[![CI](https://github.com/yansircc/roundtable-kernel/actions/workflows/ci.yml/badge.svg)](https://github.com/yansircc/roundtable-kernel/actions/workflows/ci.yml)
+
 `roundtable-kernel` is a small deliberation kernel for multi-LLM discussion.
 
-It does one thing: run a bounded roundtable where semantic truth lives in `evidence`, `findings`, `verdict`, and `convergence`, while streams and provider logs remain observability only.
+It does one thing: run a bounded roundtable where semantic truth lives in `evidence`, `findings_against_proposal`, `verdict`, and `convergence`, while streams and provider logs remain observability only.
 
 ```mermaid
 flowchart LR
-    A["Seed Evidence"] --> B["Explore"]
-    B --> C["Proposal"]
+    A["Seed Evidence"] --> B["Chair Explore"]
+    B --> C["Chair Proposal"]
     C --> D["Critic Re-Explore"]
-    D --> E["Findings Against Proposal"]
-    E --> F["Adjudication"]
-    F --> G{"Material Findings Left?"}
-    G -- "Yes" --> B
-    G -- "No" --> H["Converged"]
+    D --> E["Critic Review"]
+    E --> F{"Material Findings?"}
+    F -- "Yes" --> G["Chair Adjudicate"]
+    G --> H["Next Round"]
+    F -- "No" --> I["Converged"]
 ```
 
-## What You Can Do
+The kernel has two operating modes:
 
-- Run one discussion from a JSON spec.
-- Inspect the durable session state after each run.
-- Serve a local UI for sessions and telemetry.
-- Swap Claude and Codex wrappers without changing kernel semantics.
+- `run`: autonomous execution from a spec.
+- `init` / `next` / `apply` / `wait`: live handoff protocol where any TUI window or external LLM can become `chair` or `critic`.
 
-## Quickstart
+Default output is JSON. Use `--text` only when a human wants a rendered summary.
 
-Build the UI once:
+## Install
+
+Build the CLI from source:
 
 ```bash
 cd /Users/yansir/code/52/roundtable-kernel
-npm --prefix ui install
-npm --prefix ui run build
+make build
+./rtk -h
 ```
 
-Run one session:
+Install it onto your `PATH`:
 
 ```bash
-go run ./cmd/rtk run my-session /absolute/path/to/spec.json --force
-go run ./cmd/rtk show my-session
+cd /Users/yansir/code/52/roundtable-kernel
+make install
+rtk version
+```
+
+If you want `rtk serve` from a source checkout, build the UI bundle once:
+
+```bash
+cd /Users/yansir/code/52/roundtable-kernel
+make build-ui
+```
+
+Autonomous run:
+
+```bash
+rtk run my-session /absolute/path/to/spec.json --force
+rtk show my-session
+```
+
+Live handoff:
+
+```bash
+rtk init my-session /absolute/path/to/spec.json --force
+rtk next my-session --actor chair
+rtk apply my-session result.json
+rtk wait my-session --until turn --actor critic
 ```
 
 Start the UI:
 
 ```bash
-go run ./cmd/rtk serve --port 3133
+rtk serve --port 3133
 ```
 
 Then open [http://127.0.0.1:3133](http://127.0.0.1:3133).
 
+Release tags matching `v*` build GitHub release archives automatically. Each archive contains the `rtk` binary, `README.md`, and the built `ui/dist` bundle.
+
+This project is released under the MIT License. See [LICENSE](/Users/yansir/code/52/roundtable-kernel/LICENSE).
+
 ## CLI
 
 ```bash
-go run ./cmd/rtk run <session-id> <spec-path> [--force]
-go run ./cmd/rtk show <session-id> [--json]
-go run ./cmd/rtk list
-go run ./cmd/rtk serve [--port 3133]
+rtk init <session-id> <spec-path> [--force]
+rtk run <session-id> <spec-path> [--force] [--text]
+rtk next <session-id> [--actor name]
+rtk apply <session-id> [result.json|-]
+rtk wait <session-id> [--until change|turn|terminal] [--actor name] [--since updated_at] [--timeout-ms 300000]
+rtk show <session-id> [--text]
+rtk list [--text]
+rtk serve [--port 3133]
+rtk help <command>
+rtk version
+```
+
+`rtk -h`, `rtk --help`, and `rtk help <command>` are the intended discovery path for agents and humans.
+
+## Development
+
+```bash
+make test-unit
+make test-integration
+make ci
+```
+
+The CI workflow runs unit tests, integration tests, CLI build checks, and UI build checks.
+
+## Live Protocol
+
+`init` creates durable session state and previews the next step. It does not claim work.
+
+`next` is the only command that claims a step. It marks the phase as `running` and returns a `started_at` token.
+
+`apply` completes the currently running step. The caller should echo the `started_at` token it received from `next`, which prevents stale writes from another actor window.
+
+`wait` blocks on session-file changes and returns the same JSON envelope shape as `next`. Useful patterns:
+
+- `wait <session> --until turn --actor critic`: block until a critic turn is ready.
+- `wait <session> --until terminal`: block until the discussion converges, fails, or exhausts rounds.
+- `wait <session> --until change --since <updated_at>`: block until durable semantic state changes.
+
+This means the current Codex chat, Claude Code, another Codex TUI, or a custom agent loop can all act as `chair` or `critic` as long as they speak `next/apply`.
+
+All actor windows share the same `session_id`. A typical two-window handoff looks like this:
+
+```mermaid
+sequenceDiagram
+    participant C as "Chair Window"
+    participant K as "rtk"
+    participant R as "Critic Window"
+    C->>K: init session spec --force
+    K-->>C: preview first chair step
+    C->>K: next session --actor chair
+    K-->>C: explore step + started_at
+    C->>K: apply session {started_at, explore result}
+    C->>K: next session --actor chair
+    K-->>C: propose step + started_at
+    C->>K: apply session {started_at, proposal}
+    R->>K: wait session --until turn --actor critic
+    K-->>R: critic turn ready
+    R->>K: next session --actor critic
+    K-->>R: re-explore step + started_at
+    R->>K: apply session {started_at, re-explore result}
+    R->>K: next session --actor critic
+    K-->>R: review step + started_at
+    R->>K: apply session {started_at, findings}
+    C->>K: wait session --until turn --actor chair
+    K-->>C: adjudicate step or terminal state
+    C->>K: next/apply adjudicate if needed
+    K-->>C: next round or converged
 ```
 
 ## Spec Shape
@@ -165,7 +258,7 @@ Claude auth can be injected entirely through environment variables. For example:
 ```bash
 ANTHROPIC_BASE_URL="https://your-relay.example" \
 ANTHROPIC_AUTH_TOKEN="..." \
-go run ./cmd/rtk run my-session /absolute/path/to/spec.json --force
+rtk run my-session /absolute/path/to/spec.json --force
 ```
 
 ## Durable Outputs
@@ -175,7 +268,7 @@ Each run writes two durable artifacts:
 - `sessions/<id>.json`: semantic truth
 - `telemetry/<id>.jsonl`: runtime telemetry sidecar
 
-This split is intentional. UI and operators can read both, but only the session file is source of truth.
+This split is intentional. UI and operators can read both, but only the session file is source of truth. `wait` and `show` read the durable session, not stream output.
 
 ## UI
 
@@ -190,6 +283,17 @@ The panel is meant to answer two human questions quickly:
 
 - What does the kernel currently believe?
 - What did the agents actually do while producing that state?
+
+## Agent Skill
+
+The repo includes a repo-local Codex skill at [.codex/skills/rtk/SKILL.md](/Users/yansir/code/52/roundtable-kernel/.codex/skills/rtk/SKILL.md).
+
+The skill is intentionally small. It teaches agents to prefer `rtk` over custom polling or log scraping:
+
+- use `rtk show` for durable state
+- use `rtk wait` for blocking handoff
+- use `rtk next` and `rtk apply` for live participation
+- treat telemetry as observability, not truth
 
 ## Design Constraints
 

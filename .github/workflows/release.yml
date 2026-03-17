@@ -1,0 +1,80 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-artifacts:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
+      - name: Build UI bundle
+        run: make build-ui
+
+      - name: Build release archives
+        env:
+          VERSION: ${{ github.ref_name }}
+          COMMIT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          mkdir -p dist
+          targets=(
+            "linux amd64"
+            "linux arm64"
+            "darwin amd64"
+            "darwin arm64"
+            "windows amd64"
+          )
+          for target in "${targets[@]}"; do
+            read -r goos goarch <<<"${target}"
+            package="rtk_${VERSION}_${goos}_${goarch}"
+            stage="dist/${package}"
+            binary="rtk"
+            if [[ "${goos}" == "windows" ]]; then
+              binary="rtk.exe"
+            fi
+            mkdir -p "${stage}/ui"
+            CGO_ENABLED=0 GOOS="${goos}" GOARCH="${goarch}" \
+              go build -trimpath \
+              -ldflags="-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.date=${DATE}" \
+              -o "${stage}/${binary}" ./cmd/rtk
+            cp README.md "${stage}/README.md"
+            cp LICENSE "${stage}/LICENSE"
+            cp -R ui/dist "${stage}/ui/dist"
+            if [[ "${goos}" == "windows" ]]; then
+              (
+                cd dist
+                zip -qr "${package}.zip" "${package}"
+              )
+            else
+              tar -C dist -czf "dist/${package}.tar.gz" "${package}"
+            fi
+            rm -rf "${stage}"
+          done
+          sha256sum dist/* > dist/checksums.txt
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
