@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
+	"time"
 
 	"roundtable-kernel/internal/rtk"
 )
@@ -17,23 +19,14 @@ func fail(message string) {
 
 func usage() {
 	fmt.Println(`usage:
-  go run ./cmd/rtk run <session-id> <spec-path> [--force]
-  go run ./cmd/rtk show <session-id> [--json]
-  go run ./cmd/rtk list
-  go run ./cmd/rtk serve [--port 3133]`)
-}
-
-func extractFlag(args []string, flag string) ([]string, bool) {
-	next := []string{}
-	enabled := false
-	for _, arg := range args {
-		if arg == flag {
-			enabled = true
-			continue
-		}
-		next = append(next, arg)
-	}
-	return next, enabled
+  rtk init <session-id> <spec-path> [--force]
+  rtk run <session-id> <spec-path> [--force] [--text]
+  rtk next <session-id> [--actor name]
+  rtk apply <session-id> [result.json|-]
+  rtk wait <session-id> [--until change|turn|terminal] [--actor name] [--since updated_at] [--timeout-ms 300000]
+  rtk show <session-id> [--text]
+  rtk list [--text]
+  rtk serve [--port 3133]`)
 }
 
 func parsePort(args []string, fallback int) int {
@@ -54,57 +47,158 @@ func main() {
 	}
 	paths := rtk.ResolvePaths(root)
 	args := os.Args[1:]
-	if len(args) == 0 {
-		usage()
+	if maybeHandleMeta(args) {
 		return
 	}
 
 	switch args[0] {
 	case "list":
-		sessions, err := rtk.ListSessions(paths)
+		parsed := rtk.ParseArgs(args[1:])
+		summaries, err := rtk.ListSessions(paths)
 		if err != nil {
-			fail(err.Error())
+			failCommand("list", parsed.Has("text"), err)
 		}
-		if len(sessions) == 0 {
-			fmt.Println("no sessions")
+		if parsed.Has("text") {
+			if len(summaries) == 0 {
+				fmt.Println("no sessions")
+				return
+			}
+			for _, sessionID := range summaries {
+				fmt.Println(sessionID)
+			}
 			return
 		}
-		for _, session := range sessions {
-			fmt.Println(session)
+		detailed := make([]rtk.SessionSummary, 0, len(summaries))
+		for _, sessionID := range summaries {
+			session, err := rtk.LoadSession(paths, sessionID)
+			if err != nil {
+				failCommand("list", false, err)
+			}
+			detailed = append(detailed, rtk.DeriveSessionSummary(session))
 		}
+		rtk.SortSessionSummaries(detailed)
+		printJSON(map[string]any{"sessions": detailed})
 	case "show":
-		rest, asJSON := extractFlag(args[1:], "--json")
-		if len(rest) < 1 {
-			fail("show requires a session id")
+		parsed := rtk.ParseArgs(args[1:])
+		if len(parsed.Positionals) < 1 {
+			failCommand("show", parsed.Has("text"), fmt.Errorf("show requires a session id"))
 		}
-		session, err := rtk.LoadSession(paths, rest[0])
+		session, err := rtk.LoadSession(paths, parsed.Positionals[0])
 		if err != nil {
-			fail(err.Error())
+			failCommand("show", parsed.Has("text"), err)
 		}
-		if asJSON {
-			data, _ := json.MarshalIndent(session, "", "  ")
-			fmt.Println(string(data))
+		if parsed.Has("text") {
+			fmt.Println(rtk.RenderSession(session))
 			return
 		}
-		fmt.Println(rtk.RenderSession(session))
-	case "run":
-		rest, force := extractFlag(args[1:], "--force")
-		if len(rest) < 2 {
-			fail("run requires session id and spec path")
+		printJSON(sessionEnvelope(paths, session))
+	case "init":
+		parsed := rtk.ParseArgs(args[1:])
+		if len(parsed.Positionals) < 2 {
+			failCommand("init", false, fmt.Errorf("init requires session id and spec path"))
 		}
-		sessionID := rest[0]
-		specPath := rest[1]
+		session, _, err := rtk.InitSession(paths, filepath.Clean(parsed.Positionals[1]), parsed.Positionals[0], parsed.Has("force"))
+		if err != nil {
+			failCommand("init", false, err)
+		}
+		_, nextResult, err := rtk.PeekNextStep(paths, session.ID, "")
+		if err != nil {
+			failCommand("init", false, err)
+		}
+		printJSON(nextEnvelope(paths, session, nextResult))
+	case "run":
+		parsed := rtk.ParseArgs(args[1:])
+		if len(parsed.Positionals) < 2 {
+			failCommand("run", parsed.Has("text"), fmt.Errorf("run requires session id and spec path"))
+		}
+		sessionID := parsed.Positionals[0]
+		specPath := filepath.Clean(parsed.Positionals[1])
 		session, err := rtk.RunSession(context.Background(), rtk.RunSessionOptions{
 			Paths:     paths,
 			SpecPath:  specPath,
 			SessionID: sessionID,
-			Force:     force,
+			Force:     parsed.Has("force"),
 		})
 		if err != nil {
-			fail(err.Error())
+			failCommand("run", parsed.Has("text"), err)
 		}
-		fmt.Printf("wrote %s\n", rtk.SessionPath(paths, session.ID))
-		fmt.Println(rtk.RenderSession(session))
+		if parsed.Has("text") {
+			fmt.Println(rtk.RenderSession(session))
+			return
+		}
+		printJSON(sessionEnvelope(paths, session))
+	case "next":
+		parsed := rtk.ParseArgs(args[1:])
+		if len(parsed.Positionals) < 1 {
+			failCommand("next", false, fmt.Errorf("next requires a session id"))
+		}
+		session, result, err := rtk.NextStep(paths, parsed.Positionals[0], parsed.Value("actor"))
+		if err != nil {
+			failCommand("next", false, err)
+		}
+		printJSON(nextEnvelope(paths, session, result))
+	case "apply":
+		parsed := rtk.ParseArgs(args[1:])
+		if len(parsed.Positionals) < 1 {
+			failCommand("apply", false, fmt.Errorf("apply requires a session id"))
+		}
+		input := rtk.ApplyInput{}
+		resultPath := "-"
+		if len(parsed.Positionals) >= 2 {
+			resultPath = parsed.Positionals[1]
+		}
+		if resultPath == "-" {
+			if err := rtk.ReadJSONStdin(&input); err != nil {
+				failCommand("apply", false, err)
+			}
+		} else {
+			data, err := os.ReadFile(filepath.Clean(resultPath))
+			if err != nil {
+				failCommand("apply", false, err)
+			}
+			if err := json.Unmarshal(data, &input); err != nil {
+				failCommand("apply", false, err)
+			}
+		}
+		session, err := rtk.ApplyStep(paths, parsed.Positionals[0], input)
+		if err != nil {
+			failCommand("apply", false, err)
+		}
+		_, nextResult, err := rtk.PeekNextStep(paths, session.ID, "")
+		if err != nil {
+			failCommand("apply", false, err)
+		}
+		printJSON(nextEnvelope(paths, session, nextResult))
+	case "wait":
+		parsed := rtk.ParseArgs(args[1:])
+		if len(parsed.Positionals) < 1 {
+			failCommand("wait", false, fmt.Errorf("wait requires a session id"))
+		}
+		sessionID := parsed.Positionals[0]
+		until := parsed.Value("until")
+		if until == "" {
+			until = "change"
+		}
+		timeout := 300000
+		if value := parsed.Value("timeout-ms"); value != "" {
+			parsedTimeout, err := strconv.Atoi(value)
+			if err != nil || parsedTimeout < 0 {
+				failCommand("wait", false, fmt.Errorf("timeout-ms must be a non-negative integer"))
+			}
+			timeout = parsedTimeout
+		}
+		since := parsed.Value("since")
+		if since == "" && until == "change" {
+			session, err := rtk.LoadSession(paths, sessionID)
+			if err == nil {
+				since = rtk.DeriveSessionSummary(session).UpdatedAt
+			}
+		}
+		session, result, err := rtk.WaitForSession(paths, sessionID, since, until, parsed.Value("actor"), time.Duration(timeout)*time.Millisecond)
+		if err != nil {
+			failCommand("wait", false, err)
+		}
+		printJSON(nextEnvelope(paths, session, result))
 	case "serve":
 		port := parsePort(args[1:], 3133)
 		if err := rtk.Serve(paths, port); err != nil {

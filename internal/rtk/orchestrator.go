@@ -37,23 +37,7 @@ func failSession(paths Paths, session *Session, telemetryFile string, runErr err
 }
 
 func RunSession(ctx context.Context, options RunSessionOptions) (*Session, error) {
-	bootstrap, err := newExecAdapter(options.SpecPath, "")
-	if err != nil {
-		return nil, err
-	}
-	metadata := bootstrap.Metadata()
-	session, err := NewSession(options.SessionID, metadata.Topic, metadata.Chair, metadata.Critics, metadata.MaxRounds, "exec")
-	if err != nil {
-		return nil, err
-	}
-	if err := CreateSessionFile(options.Paths, session, options.Force); err != nil {
-		return nil, err
-	}
-	telemetryFile, err := ResetTelemetryFile(options.Paths, session.ID)
-	if err != nil {
-		return nil, err
-	}
-	adapter, err := newExecAdapter(options.SpecPath, telemetryFile)
+	session, adapter, telemetryFile, err := bootstrapExecSession(options.Paths, options.SpecPath, options.SessionID, options.Force)
 	if err != nil {
 		return nil, err
 	}
