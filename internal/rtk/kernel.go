@@ -194,6 +194,7 @@ func RecordPhaseStart(session *Session, round int, actor, phase string, inputSum
 		InputSummary:  inputSummary,
 		OutputSummary: nil,
 		Artifact:      nil,
+		Usage:         nil,
 		StartedAt:     nowISO(),
 		CompletedAt:   nil,
 		DurationMS:    nil,
@@ -206,7 +207,7 @@ func RecordPhaseStart(session *Session, round int, actor, phase string, inputSum
 	return nil
 }
 
-func CompletePhase(session *Session, round int, actor, phase string, outputSummary map[string]any, artifact map[string]any, durationMS int64, phaseErr error) error {
+func CompletePhase(session *Session, round int, actor, phase string, outputSummary map[string]any, artifact map[string]any, usage *PhaseUsage, durationMS int64, phaseErr error) error {
 	roundRecord, err := ensureOpenRound(session, round)
 	if err != nil {
 		return err
@@ -232,6 +233,7 @@ func CompletePhase(session *Session, round int, actor, phase string, outputSumma
 		InputSummary:  roundRecord.PhaseHistory[index].InputSummary,
 		OutputSummary: outputSummary,
 		Artifact:      artifact,
+		Usage:         normalizePhaseUsage(usage),
 		StartedAt:     roundRecord.PhaseHistory[index].StartedAt,
 		CompletedAt:   &completedAt,
 		DurationMS:    int64Ptr(durationMS),

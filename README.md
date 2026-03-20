@@ -91,6 +91,7 @@ rtk init <session-id> <spec-path> [--force]
 rtk run <session-id> <spec-path> [--force] [--text]
 rtk next <session-id> [--actor name]
 rtk apply <session-id> [result.json|-]
+rtk stop <session-id>
 rtk wait <session-id> [--until change|turn|terminal] [--actor name] [--since updated_at] [--timeout-ms 600000]
 rtk show <session-id> [--text]
 rtk list [--text]
@@ -119,10 +120,14 @@ The CI workflow runs unit tests, integration tests, CLI build checks, and UI bui
 
 `apply` completes the currently running step. The caller should echo the `started_at` token it received from `next`, which prevents stale writes from another actor window.
 
+`apply.result` may include reserved execution metadata under `_rtk.usage`. The kernel strips that metadata from the semantic payload and stores it on the phase record. Provider-reported cost remains exact when available; OpenAI/Codex cost is otherwise derived from official per-token pricing as a token-only estimate and marked as approximate.
+
+`stop` marks the session as durably terminal. `next`, `wait --until terminal`, and autonomous `run` all treat `stopped` as a first-class terminal state.
+
 `wait` blocks on session-file changes and returns the same JSON envelope shape as `next`. Useful patterns:
 
 - `wait <session> --until turn --actor critic`: block until a critic turn is ready.
-- `wait <session> --until terminal`: block until the discussion converges, fails, or exhausts rounds.
+- `wait <session> --until terminal`: block until the discussion converges, fails, exhausts rounds, or is stopped.
 - `wait <session> --until change --since <updated_at>`: block until durable semantic state changes.
 
 This means the current Codex chat, Claude Code, another Codex TUI, or a custom agent loop can all act as `chair` or `critic` as long as they speak `next/apply`.

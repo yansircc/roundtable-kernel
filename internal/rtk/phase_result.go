@@ -3,6 +3,7 @@ package rtk
 import "encoding/json"
 
 func EvidenceBatchesFromResult(result map[string]any, actor string, phase string) ([]EvidenceBatch, error) {
+	result = SemanticResult(result)
 	itemsRaw, ok := result["items"]
 	if !ok || itemsRaw == nil {
 		return []EvidenceBatch{}, nil
@@ -26,6 +27,7 @@ func EvidenceBatchesFromResult(result map[string]any, actor string, phase string
 }
 
 func ProposalFromResult(result map[string]any) (*Proposal, error) {
+	result = SemanticResult(result)
 	proposalRaw := result["proposal"]
 	if proposalRaw == nil {
 		proposalRaw = result
@@ -39,6 +41,7 @@ func ProposalFromResult(result map[string]any) (*Proposal, error) {
 }
 
 func FindingsFromResult(result map[string]any) ([]Finding, error) {
+	result = SemanticResult(result)
 	findingsRaw := result["findings"]
 	if findingsRaw == nil {
 		return []Finding{}, nil
@@ -52,6 +55,7 @@ func FindingsFromResult(result map[string]any) ([]Finding, error) {
 }
 
 func VerdictFromResult(result map[string]any) (*Verdict, error) {
+	result = SemanticResult(result)
 	verdictRaw := result["verdict"]
 	if verdictRaw == nil {
 		if len(result) == 0 {

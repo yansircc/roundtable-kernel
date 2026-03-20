@@ -10,20 +10,45 @@ import (
 	"roundtable-kernel/internal/rtk"
 )
 
-func parseClaudeStructuredOutput(stdout string) (any, error) {
+func parseClaudeResult(stdout string) (map[string]any, error) {
 	payload := []map[string]any{}
 	if err := json.Unmarshal([]byte(stdout), &payload); err != nil {
 		return nil, err
 	}
 	for index := len(payload) - 1; index >= 0; index-- {
 		if payload[index]["type"] == "result" {
-			value, ok := payload[index]["structured_output"]
-			if ok {
-				return value, nil
-			}
+			return payload[index], nil
 		}
 	}
-	return nil, fmt.Errorf("claude wrapper could not find structured_output in result event")
+	return nil, fmt.Errorf("claude wrapper could not find result event")
+}
+
+func parseClaudeStructuredOutput(resultEvent map[string]any) (map[string]any, error) {
+	value, ok := resultEvent["structured_output"]
+	if !ok {
+		return nil, fmt.Errorf("claude wrapper could not find structured_output in result event")
+	}
+	data, err := json.Marshal(value)
+	if err != nil {
+		return nil, err
+	}
+	result := map[string]any{}
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func claudeOutput(stdout string, configuredModel string) (map[string]any, error) {
+	resultEvent, err := parseClaudeResult(stdout)
+	if err != nil {
+		return nil, err
+	}
+	value, err := parseClaudeStructuredOutput(resultEvent)
+	if err != nil {
+		return nil, err
+	}
+	return rtk.AttachUsage(value, rtk.ClaudePhaseUsage(resultEvent, configuredModel)), nil
 }
 
 func main() {
@@ -204,7 +229,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
-	value, err := parseClaudeStructuredOutput(stdout)
+	value, err := claudeOutput(stdout, model)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)

@@ -1,6 +1,7 @@
 package rtk
 
 import (
+	"errors"
 	"fmt"
 	"time"
 )
@@ -103,7 +104,7 @@ type phaseRun struct {
 	InputSummary  map[string]any
 	Summarize     func(any) map[string]any
 	OnSuccess     func(any) (map[string]any, error)
-	Fn            func() (any, error)
+	Fn            func() (AgentPhaseResult, error)
 	Paths         Paths
 }
 
@@ -128,8 +129,21 @@ func runPhase(spec phaseRun) (any, error) {
 	start := time.Now()
 	result, err := spec.Fn()
 	if err != nil {
+		if errors.Is(err, ErrSessionStopped) {
+			_ = syncStoppedSession(spec.Paths, spec.Session)
+			_ = AppendTelemetryEvent(spec.TelemetryFile, map[string]any{
+				"type":        "phase_stopped",
+				"session_id":  spec.Session.ID,
+				"round":       spec.Round,
+				"actor":       spec.Actor,
+				"phase":       spec.Phase,
+				"adapter":     spec.Adapter,
+				"duration_ms": time.Since(start).Milliseconds(),
+			})
+			return nil, ErrSessionStopped
+		}
 		if spec.Round > 0 {
-			_ = CompletePhase(spec.Session, spec.Round, spec.Actor, spec.Phase, nil, nil, time.Since(start).Milliseconds(), err)
+			_ = CompletePhase(spec.Session, spec.Round, spec.Actor, spec.Phase, nil, nil, nil, time.Since(start).Milliseconds(), err)
 			MarkSessionFailed(spec.Session, spec.Round, spec.Actor, spec.Phase, err)
 			_ = SaveSession(spec.Paths, spec.Session)
 		}
@@ -147,17 +161,17 @@ func runPhase(spec phaseRun) (any, error) {
 	}
 	var outputSummary map[string]any
 	if spec.Summarize != nil {
-		outputSummary = spec.Summarize(result)
+		outputSummary = spec.Summarize(result.Value)
 	}
 	var artifact map[string]any
 	if spec.OnSuccess != nil {
-		artifact, err = spec.OnSuccess(result)
+		artifact, err = spec.OnSuccess(result.Value)
 		if err != nil {
 			return nil, err
 		}
 	}
 	if spec.Round > 0 {
-		if err := CompletePhase(spec.Session, spec.Round, spec.Actor, spec.Phase, outputSummary, artifact, time.Since(start).Milliseconds(), nil); err != nil {
+		if err := CompletePhase(spec.Session, spec.Round, spec.Actor, spec.Phase, outputSummary, artifact, result.Usage, time.Since(start).Milliseconds(), nil); err != nil {
 			return nil, err
 		}
 		if err := SaveSession(spec.Paths, spec.Session); err != nil {
@@ -178,5 +192,5 @@ func runPhase(spec phaseRun) (any, error) {
 		"duration_ms":    time.Since(start).Milliseconds(),
 		"output_summary": outputSummary,
 	})
-	return result, nil
+	return result.Value, nil
 }

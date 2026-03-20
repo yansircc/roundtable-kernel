@@ -76,6 +76,7 @@ type PhaseRecord struct {
 	InputSummary  map[string]any `json:"input_summary"`
 	OutputSummary map[string]any `json:"output_summary"`
 	Artifact      map[string]any `json:"artifact"`
+	Usage         *PhaseUsage    `json:"usage,omitempty"`
 	StartedAt     string         `json:"started_at"`
 	CompletedAt   *string        `json:"completed_at"`
 	DurationMS    *int64         `json:"duration_ms"`
@@ -169,6 +170,11 @@ func intPtr(value int) *int {
 }
 
 func int64Ptr(value int64) *int64 {
+	copy := value
+	return &copy
+}
+
+func float64Ptr(value float64) *float64 {
 	copy := value
 	return &copy
 }

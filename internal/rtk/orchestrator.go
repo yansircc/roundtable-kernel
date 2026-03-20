@@ -1,6 +1,9 @@
 package rtk
 
-import "context"
+import (
+	"context"
+	"errors"
+)
 
 type RunSessionOptions struct {
 	Paths     Paths
@@ -41,6 +44,11 @@ func RunSession(ctx context.Context, options RunSessionOptions) (*Session, error
 	if err != nil {
 		return nil, err
 	}
+	runCtx, stopWatchCleanup, err := ContextWithSessionStop(ctx, options.Paths, session.ID)
+	if err != nil {
+		return nil, err
+	}
+	defer stopWatchCleanup()
 	_ = AppendTelemetryEvent(telemetryFile, map[string]any{
 		"type":       "session_started",
 		"session_id": session.ID,
@@ -52,12 +60,21 @@ func RunSession(ctx context.Context, options RunSessionOptions) (*Session, error
 	})
 
 	evidenceKeyMap := map[string]string{}
-	if err := runSeedPhase(ctx, adapter, session, evidenceKeyMap, telemetryFile, options.Paths); err != nil {
+	if err := runSeedPhase(runCtx, adapter, session, evidenceKeyMap, telemetryFile, options.Paths); err != nil {
+		if errors.Is(err, ErrSessionStopped) {
+			return session, nil
+		}
 		return failSession(options.Paths, session, telemetryFile, err)
 	}
 
 	for round := 1; !roundLimitExceeded(session.MaxRounds, round); round++ {
-		if err := runRound(ctx, adapter, session, round, evidenceKeyMap, telemetryFile, options.Paths); err != nil {
+		if sessionStopped(session) {
+			return session, nil
+		}
+		if err := runRound(runCtx, adapter, session, round, evidenceKeyMap, telemetryFile, options.Paths); err != nil {
+			if errors.Is(err, ErrSessionStopped) {
+				return session, nil
+			}
 			return failSession(options.Paths, session, telemetryFile, err)
 		}
 		if session.Status.Converged {

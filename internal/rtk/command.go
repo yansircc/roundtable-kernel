@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -171,6 +172,7 @@ func RunCommand(options CommandOptions) (string, string, error) {
 	stdout := stdoutBuf.String()
 	stderr := stderrBuf.String()
 	durationMS := time.Since(startedAt).Milliseconds()
+	cause := context.Cause(ctx)
 
 	if ctx.Err() == context.DeadlineExceeded {
 		err := fmt.Errorf("command timed out after %dms: %s\nstderr:\n%s\nstdout:\n%s", timeout.Milliseconds(), stringsJoin(options.Cmd), ClipText(stderr, 1200), ClipText(stdout, 1200))
@@ -185,6 +187,15 @@ func RunCommand(options CommandOptions) (string, string, error) {
 			},
 		})
 		return stdout, stderr, err
+	}
+	if errors.Is(cause, ErrSessionStopped) {
+		commandEvent(options.Telemetry, "command_stopped", map[string]any{
+			"command":        SanitizeCommand(options.Cmd, options.Cwd, options.Env),
+			"duration_ms":    durationMS,
+			"stdout_excerpt": ClipText(stdout, 1200),
+			"stderr_excerpt": ClipText(stderr, 1200),
+		})
+		return stdout, stderr, ErrSessionStopped
 	}
 	if waitErr != nil {
 		exitCode := 1

@@ -76,6 +76,7 @@ func main() {
 		"exec",
 		"--skip-git-repo-check",
 		"--sandbox", sandbox,
+		"--json",
 		"--output-schema", schemaHandle.File,
 		"--output-last-message", outputFile,
 		"-",
@@ -88,7 +89,7 @@ func main() {
 	if profile != "" {
 		cmd = append(cmd[:insert], append([]string{"--profile", profile}, cmd[insert:]...)...)
 	}
-	_, _, err = rtk.RunCommand(rtk.CommandOptions{
+	stdout, _, err := rtk.RunCommand(rtk.CommandOptions{
 		Cmd:     cmd,
 		Cwd:     workspace,
 		Input:   rtk.PromptForRequest(request),
@@ -168,7 +169,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
-	if err := rtk.PrintJSON(value); err != nil {
+	if err := rtk.PrintJSON(rtk.AttachUsage(value, rtk.CodexPhaseUsage(stdout, model))); err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}

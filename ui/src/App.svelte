@@ -10,6 +10,7 @@
   let now = Date.now();
   let error = '';
   let disclosureState = {};
+  const integerFormatter = new Intl.NumberFormat('en-US');
 
   async function getJson(url) {
     const response = await fetch(url);
@@ -50,9 +51,9 @@
     }
     const since = reset ? 0 : telemetryOffset;
     const data = await getJson(`/api/telemetry/${encodeURIComponent(selectedId)}?since=${since}`);
-    const events = data.events || [];
+    const events = telemetryEntries(data.events || [], since);
     telemetry = reset || since === 0 ? events : [...telemetry, ...events];
-    telemetryOffset = data.next_offset || telemetry.length;
+    telemetryOffset = Number.isInteger(data.next_offset) ? data.next_offset : since + events.length;
   }
 
   async function refresh({ resetTelemetry = false } = {}) {
@@ -78,6 +79,8 @@
         return 'warn';
       case 'converged':
         return 'good';
+      case 'stopped':
+        return 'muted';
       case 'needs_revision':
         return 'warn';
       case 'failed':
@@ -93,7 +96,7 @@
   }
 
   function phaseStatusTone(status) {
-    return status === 'failed' ? 'bad' : status === 'succeeded' ? 'good' : status === 'running' ? 'warn' : 'muted';
+    return status === 'failed' ? 'bad' : status === 'succeeded' ? 'good' : status === 'running' ? 'warn' : status === 'stopped' ? 'muted' : 'muted';
   }
 
   function clock(iso) {
@@ -115,6 +118,88 @@
     return `${hours}h${minutes % 60}m`;
   }
 
+  function formatInteger(value) {
+    return integerFormatter.format(value || 0);
+  }
+
+  function formatCost(value) {
+    if (!Number.isFinite(value)) return '';
+    if (value >= 10) return `$${value.toFixed(2)}`;
+    if (value >= 1) return `$${value.toFixed(3)}`;
+    if (value >= 0.1) return `$${value.toFixed(4)}`;
+    return `$${value.toFixed(5)}`;
+  }
+
+  function aggregateUsage(values) {
+    const totals = {
+      input_tokens: 0,
+      output_tokens: 0,
+      cache_read_input_tokens: 0,
+      cache_creation_input_tokens: 0,
+      known_cost_usd: 0,
+      cost_count: 0,
+      estimated_cost_count: 0,
+      missing_cost_count: 0,
+      usage_count: 0,
+    };
+
+    for (const usage of values || []) {
+      if (!usage) continue;
+      totals.usage_count += 1;
+      totals.input_tokens += Number(usage.input_tokens || 0);
+      totals.output_tokens += Number(usage.output_tokens || 0);
+      totals.cache_read_input_tokens += Number(usage.cache_read_input_tokens || 0);
+      totals.cache_creation_input_tokens += Number(usage.cache_creation_input_tokens || 0);
+
+      if (typeof usage.cost_usd === 'number' && Number.isFinite(usage.cost_usd)) {
+        totals.known_cost_usd += usage.cost_usd;
+        totals.cost_count += 1;
+        if (usage.cost_source && usage.cost_source !== 'provider') {
+          totals.estimated_cost_count += 1;
+        }
+      } else {
+        totals.missing_cost_count += 1;
+      }
+    }
+
+    return totals;
+  }
+
+  function hasUsageTotals(totals) {
+    return (totals?.usage_count || 0) > 0;
+  }
+
+  function usageSummaryText(totals) {
+    if (!hasUsageTotals(totals)) return '';
+
+    const parts = [];
+    const approximate = totals.estimated_cost_count > 0;
+    const costLabel = (value) => `${approximate ? '~' : ''}${formatCost(value)}`;
+    if (totals.cost_count > 0 && totals.missing_cost_count === 0) {
+      parts.push(costLabel(totals.known_cost_usd));
+    } else if (totals.cost_count > 0) {
+      parts.push(`known ${costLabel(totals.known_cost_usd)} + ${totals.missing_cost_count} unknown`);
+    } else if (totals.missing_cost_count > 0) {
+      parts.push(`cost ${totals.missing_cost_count} unknown`);
+    }
+
+    const tokenParts = [];
+    if (totals.input_tokens > 0) tokenParts.push(`in ${formatInteger(totals.input_tokens)}`);
+    if (totals.output_tokens > 0) tokenParts.push(`out ${formatInteger(totals.output_tokens)}`);
+    if (totals.cache_read_input_tokens > 0) tokenParts.push(`cache-read ${formatInteger(totals.cache_read_input_tokens)}`);
+    if (totals.cache_creation_input_tokens > 0) tokenParts.push(`cache-write ${formatInteger(totals.cache_creation_input_tokens)}`);
+    if (tokenParts.length > 0) parts.push(tokenParts.join(' · '));
+
+    return parts.join(' · ');
+  }
+
+  function phaseUsageText(usage) {
+    if (!usage) return '';
+    const summary = usageSummaryText(aggregateUsage([usage]));
+    if (usage.model && summary) return `${usage.model} · ${summary}`;
+    return usage.model || summary;
+  }
+
   function evidenceMap(session) {
     return new Map((session?.evidence || []).map((item) => [item.id, item]));
   }
@@ -129,6 +214,7 @@
 
   function eventTone(type) {
     if (type === 'wrapper_stream') return 'warn';
+    if (type?.endsWith('stopped')) return 'muted';
     if (type?.endsWith('failed')) return 'bad';
     if (type?.endsWith('succeeded') || type?.endsWith('finished')) return 'good';
     if (type?.endsWith('started')) return 'muted';
@@ -179,8 +265,18 @@
     ].join(' · ');
   }
 
-  function roundMeta(round, findings) {
-    return [`${round.review_summary?.total || findings.length} findings`, `${round.evidence_added.length} evidence`].join(' · ');
+  function roundMeta(round, findings, usageTotals) {
+    const parts = [`${round.review_summary?.total || findings.length} findings`, `${round.evidence_added.length} evidence`];
+    const usage = usageSummaryText(usageTotals);
+    if (usage) parts.push(usage);
+    return parts.join(' · ');
+  }
+
+  function telemetryEntries(events, offset) {
+    return events.map((event, index) => ({
+      key: disclosureKey('telemetry-item', offset + index),
+      event,
+    }));
   }
 
   function disclosureKey(...parts) {
@@ -197,8 +293,54 @@
     disclosureState = { ...disclosureState, [key]: open };
   }
 
-  function telemetryEventKey(event) {
-    return disclosureKey('telemetry-item', event.ts, event.type, event.actor, event.phase, event.channel, event.source);
+  function disclosure(node, options) {
+    let current = disclosureOptions(options);
+
+    syncDisclosure(node, current);
+
+    const onToggle = () => {
+      setDisclosureOpen(current.key, node.open);
+    };
+
+    node.addEventListener('toggle', onToggle);
+
+    return {
+      update(nextOptions) {
+        const next = disclosureOptions(nextOptions);
+        const shouldSync =
+          next.key !== current.key ||
+          (!(next.key in disclosureState) && next.fallback !== current.fallback);
+
+        if (shouldSync) {
+          current = next;
+          syncDisclosure(node, current);
+          return;
+        }
+
+        current = next;
+      },
+      destroy() {
+        node.removeEventListener('toggle', onToggle);
+      },
+    };
+  }
+
+  function disclosureOptions(options) {
+    return {
+      key: options?.key || '',
+      fallback: options?.fallback === true,
+    };
+  }
+
+  function syncDisclosure(node, options) {
+    if (!options.key) {
+      return;
+    }
+
+    const nextOpen = disclosureOpen(options.key, options.fallback);
+    if (node.open !== nextOpen) {
+      node.open = nextOpen;
+    }
   }
 
   $: selectedSummary = sessions.find((session) => session.id === selectedId) || null;
@@ -206,22 +348,7 @@
   $: selectedOpenRound = selected?.open_round || null;
   $: selectedRounds = selected ? [...(selected.rounds || []), ...(selectedOpenRound ? [selectedOpenRound] : [])] : [];
   $: selectedArtifact = currentArtifact(selected);
-  $: if (selected?.id) {
-    const nextState = { ...disclosureState };
-    let changed = false;
-
-    for (const round of selectedRounds) {
-      const key = disclosureKey('round', selected.id, round.index);
-      if (!(key in nextState)) {
-        nextState[key] = selectedOpenRound?.index === round.index;
-        changed = true;
-      }
-    }
-
-    if (changed) {
-      disclosureState = nextState;
-    }
-  }
+  $: selectedUsageTotals = aggregateUsage(selectedRounds.flatMap((round) => roundPhaseHistory(round).map((entry) => entry.usage)));
 
   onMount(() => {
     refresh({ resetTelemetry: true });
@@ -268,7 +395,7 @@
         <div class="empty-state">No sessions available.</div>
       {:else}
         <div class="stack">
-          {#each sessions as session}
+          {#each sessions as session (session.id)}
             <button
               type="button"
               class:is-active={selectedId === session.id}
@@ -305,6 +432,9 @@
           <div class="stack">
             <p class="lead-copy">{selected.topic}</p>
             <p class="meta-copy facts-line">{selectedMeta(selected, selectedSummary)}</p>
+            {#if hasUsageTotals(selectedUsageTotals)}
+              <p class="meta-copy">usage {usageSummaryText(selectedUsageTotals)}</p>
+            {/if}
 
             <div class="note-surface">
               <p>{selectedArtifact?.summary || 'No proposal material yet.'}</p>
@@ -333,16 +463,16 @@
           </div>
 
           <div class="stack">
-            {#each selectedRounds as round}
+            {#each selectedRounds as round (disclosureKey('round', selected.id, round.index))}
               {@const findings = roundFindings(round)}
               {@const phases = roundPhaseHistory(round)}
+              {@const phaseUsageTotals = aggregateUsage(phases.map((entry) => entry.usage))}
               {@const isOpenRound = selectedOpenRound?.index === round.index}
               {@const roundDisclosureKey = disclosureKey('round', selected.id, round.index)}
 
               <details
                 class="round-item"
-                open={disclosureOpen(roundDisclosureKey, isOpenRound)}
-                on:toggle={(event) => setDisclosureOpen(roundDisclosureKey, event.currentTarget.open)}
+                use:disclosure={{ key: roundDisclosureKey, fallback: isOpenRound }}
               >
                 <summary>
                   <div class="item-head">
@@ -354,14 +484,14 @@
                       <p class="body-copy">{round.proposal?.summary || 'No proposal yet.'}</p>
                     </div>
 
-                    <p class="meta-copy">{roundMeta(round, findings)}</p>
+                    <p class="meta-copy">{roundMeta(round, findings, phaseUsageTotals)}</p>
                   </div>
                 </summary>
 
                 <div class="round-body">
                   {#if round.proposal?.claims?.length}
                     <div class="token-row">
-                      {#each round.proposal.claims as claim}
+                      {#each round.proposal.claims as claim (claim)}
                         <span class="token">{claim}</span>
                       {/each}
                     </div>
@@ -422,6 +552,10 @@
                     <div class="note-surface note-surface--bad">
                       <p>Interrupted before adjudication.</p>
                     </div>
+                  {:else if isOpenRound && selected.status.state === 'stopped'}
+                    <div class="note-surface">
+                      <p>Session was stopped before the round closed.</p>
+                    </div>
                   {:else if isOpenRound}
                     <div class="note-surface">
                       <p>Round is still in flight.</p>
@@ -436,18 +570,17 @@
                     {@const phaseHistoryDisclosureKey = disclosureKey('phase-history', selected.id, round.index)}
                     <details
                       class="inline-details"
-                      open={disclosureOpen(phaseHistoryDisclosureKey)}
-                      on:toggle={(event) => setDisclosureOpen(phaseHistoryDisclosureKey, event.currentTarget.open)}
+                      use:disclosure={{ key: phaseHistoryDisclosureKey }}
                     >
                       <summary>phase history {phases.length}</summary>
 
                       <div class="stack stack--tight nested-stack">
-                        {#each phases as entry}
+                        {#each phases as entry (disclosureKey('phase', selected.id, round.index, entry.actor, entry.phase, entry.started_at))}
                           {@const phaseDisclosureKey = disclosureKey('phase', selected.id, round.index, entry.actor, entry.phase, entry.started_at)}
+                          {@const phaseUsage = phaseUsageText(entry.usage)}
                           <details
                             class="stream-item"
-                            open={disclosureOpen(phaseDisclosureKey)}
-                            on:toggle={(event) => setDisclosureOpen(phaseDisclosureKey, event.currentTarget.open)}
+                            use:disclosure={{ key: phaseDisclosureKey }}
                           >
                             <summary>
                               <div class="item-head">
@@ -460,6 +593,9 @@
                                   <span>{clock(entry.started_at)}</span>
                                   {#if entry.duration_ms !== null}
                                     <span>{entry.duration_ms}ms</span>
+                                  {/if}
+                                  {#if phaseUsage}
+                                    <span>{phaseUsage}</span>
                                   {/if}
                                 </div>
                               </div>
@@ -486,6 +622,13 @@
                               </div>
                             {/if}
 
+                            {#if entry.usage}
+                              <div class="detail-block">
+                                <div class="meta-copy">usage</div>
+                                <pre>{JSON.stringify(entry.usage, null, 2)}</pre>
+                              </div>
+                            {/if}
+
                             {#if entry.error}
                               <div class="detail-block">
                                 <div class="meta-copy">error</div>
@@ -506,8 +649,7 @@
         {@const evidenceSectionDisclosureKey = disclosureKey('section', selected.id, 'evidence')}
         <details
           class="section fold-section"
-          open={disclosureOpen(evidenceSectionDisclosureKey)}
-          on:toggle={(event) => setDisclosureOpen(evidenceSectionDisclosureKey, event.currentTarget.open)}
+          use:disclosure={{ key: evidenceSectionDisclosureKey }}
         >
           <summary>
             <div class="section-head">
@@ -521,7 +663,7 @@
               <div class="empty-state">No evidence yet.</div>
             {:else}
               <div class="stack">
-                {#each selected.evidence as evidence}
+                {#each selected.evidence as evidence (evidence.id)}
                   {@const evidenceDisclosureKey = disclosureKey('evidence', selected.id, evidence.id)}
                   <article class="stream-item">
                     <div class="item-head">
@@ -537,8 +679,7 @@
 
                     <details
                       class="inline-details"
-                      open={disclosureOpen(evidenceDisclosureKey)}
-                      on:toggle={(event) => setDisclosureOpen(evidenceDisclosureKey, event.currentTarget.open)}
+                      use:disclosure={{ key: evidenceDisclosureKey }}
                     >
                       <summary>{clock(evidence.created_at)} · excerpt</summary>
                       <pre>{evidence.excerpt}</pre>
@@ -553,8 +694,7 @@
         {@const telemetrySectionDisclosureKey = disclosureKey('section', selected.id, 'telemetry')}
         <details
           class="section fold-section"
-          open={disclosureOpen(telemetrySectionDisclosureKey)}
-          on:toggle={(event) => setDisclosureOpen(telemetrySectionDisclosureKey, event.currentTarget.open)}
+          use:disclosure={{ key: telemetrySectionDisclosureKey }}
         >
           <summary>
             <div class="section-head">
@@ -570,12 +710,12 @@
               <div class="empty-state">No telemetry yet.</div>
             {:else}
               <div class="stack">
-                {#each [...telemetry].reverse().slice(0, 80) as event}
-                  {@const eventDisclosureKey = telemetryEventKey(event)}
+                {#each [...telemetry].reverse().slice(0, 80) as entry (entry.key)}
+                  {@const eventDisclosureKey = entry.key}
+                  {@const event = entry.event}
                   <details
                     class="stream-item"
-                    open={disclosureOpen(eventDisclosureKey)}
-                    on:toggle={(event) => setDisclosureOpen(eventDisclosureKey, event.currentTarget.open)}
+                    use:disclosure={{ key: eventDisclosureKey }}
                   >
                     <summary>
                       <div class="item-head">

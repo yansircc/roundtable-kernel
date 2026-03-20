@@ -164,7 +164,7 @@ func (e *execAdapter) SeedEvidence(ctx context.Context) ([]EvidenceBatch, error)
 	}}, nil
 }
 
-func (e *execAdapter) CollectEvidence(ctx context.Context, args CollectEvidenceArgs) ([]EvidenceBatch, error) {
+func (e *execAdapter) CollectEvidence(ctx context.Context, args CollectEvidenceArgs) (AgentPhaseResult, error) {
 	result, err := e.invoke(ctx, args.Actor, map[string]any{
 		"protocol": "roundtable-kernel.exec.v1",
 		"actor":    args.Actor,
@@ -173,12 +173,16 @@ func (e *execAdapter) CollectEvidence(ctx context.Context, args CollectEvidenceA
 		"session":  args.Session,
 	})
 	if err != nil {
-		return nil, err
+		return AgentPhaseResult{}, err
 	}
-	return EvidenceBatchesFromResult(result, args.Actor, args.Phase)
+	batches, err := EvidenceBatchesFromResult(result, args.Actor, args.Phase)
+	if err != nil {
+		return AgentPhaseResult{}, err
+	}
+	return AgentPhaseResult{Value: batches, Usage: ResultUsage(result)}, nil
 }
 
-func (e *execAdapter) Propose(ctx context.Context, args ProposeArgs) (*Proposal, error) {
+func (e *execAdapter) Propose(ctx context.Context, args ProposeArgs) (AgentPhaseResult, error) {
 	result, err := e.invoke(ctx, e.spec.Chair, map[string]any{
 		"protocol": "roundtable-kernel.exec.v1",
 		"actor":    e.spec.Chair,
@@ -187,12 +191,16 @@ func (e *execAdapter) Propose(ctx context.Context, args ProposeArgs) (*Proposal,
 		"session":  args.Session,
 	})
 	if err != nil {
-		return nil, err
+		return AgentPhaseResult{}, err
 	}
-	return ProposalFromResult(result)
+	proposal, err := ProposalFromResult(result)
+	if err != nil {
+		return AgentPhaseResult{}, err
+	}
+	return AgentPhaseResult{Value: proposal, Usage: ResultUsage(result)}, nil
 }
 
-func (e *execAdapter) Review(ctx context.Context, args ReviewArgs) ([]Finding, error) {
+func (e *execAdapter) Review(ctx context.Context, args ReviewArgs) (AgentPhaseResult, error) {
 	result, err := e.invoke(ctx, args.Critic, map[string]any{
 		"protocol": "roundtable-kernel.exec.v1",
 		"actor":    args.Critic,
@@ -202,14 +210,18 @@ func (e *execAdapter) Review(ctx context.Context, args ReviewArgs) ([]Finding, e
 		"proposal": args.Proposal,
 	})
 	if err != nil {
-		return nil, err
+		return AgentPhaseResult{}, err
 	}
-	return FindingsFromResult(result)
+	findings, err := FindingsFromResult(result)
+	if err != nil {
+		return AgentPhaseResult{}, err
+	}
+	return AgentPhaseResult{Value: findings, Usage: ResultUsage(result)}, nil
 }
 
-func (e *execAdapter) Adjudicate(ctx context.Context, args AdjudicateArgs) (*Verdict, error) {
+func (e *execAdapter) Adjudicate(ctx context.Context, args AdjudicateArgs) (AgentPhaseResult, error) {
 	if len(args.Findings) == 0 {
-		return nil, nil
+		return AgentPhaseResult{}, nil
 	}
 	result, err := e.invoke(ctx, e.spec.Chair, map[string]any{
 		"protocol": "roundtable-kernel.exec.v1",
@@ -221,7 +233,11 @@ func (e *execAdapter) Adjudicate(ctx context.Context, args AdjudicateArgs) (*Ver
 		"findings": args.Findings,
 	})
 	if err != nil {
-		return nil, err
+		return AgentPhaseResult{}, err
 	}
-	return VerdictFromResult(result)
+	verdict, err := VerdictFromResult(result)
+	if err != nil {
+		return AgentPhaseResult{}, err
+	}
+	return AgentPhaseResult{Value: verdict, Usage: ResultUsage(result)}, nil
 }

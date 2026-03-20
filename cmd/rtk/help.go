@@ -60,7 +60,17 @@ var commandDocs = map[string]commandDoc{
 		},
 		details: []string{
 			"Use `--until turn --actor critic` to hand work to a critic window.",
-			"Use `--until terminal` to wait for convergence, failure, or exhaustion.",
+			"Use `--until terminal` to wait for convergence, failure, exhaustion, or an explicit stop.",
+		},
+	},
+	"stop": {
+		summary: "Mark a session as stopped and terminate further work.",
+		usage: []string{
+			"rtk stop <session-id>",
+		},
+		details: []string{
+			"`stop` is durable terminal state, not a UI-only hint.",
+			"Autonomous `run` will observe it and stop instead of continuing to later phases.",
 		},
 	},
 	"show": {
@@ -106,7 +116,7 @@ var commandDocs = map[string]commandDoc{
 	},
 }
 
-var commandOrder = []string{"init", "run", "next", "apply", "wait", "show", "list", "serve", "version"}
+var commandOrder = []string{"init", "run", "next", "apply", "wait", "stop", "show", "list", "serve", "version"}
 
 func helpFlag(arg string) bool {
 	return arg == "-h" || arg == "--help"
@@ -131,6 +141,7 @@ func globalHelp() string {
 		"  rtk init my-session ./spec.json --force",
 		"  rtk next my-session --actor chair",
 		"  rtk apply my-session result.json",
+		"  rtk stop my-session",
 		"  rtk wait my-session --until turn --actor critic",
 		"  rtk serve --port 3133",
 		"",

@@ -25,8 +25,9 @@ func runSeedPhase(ctx context.Context, adapter *execAdapter, session *Session, e
 		Adapter:       session.Adapter,
 		Summarize:     summarizeEvidenceBatches,
 		Paths:         paths,
-		Fn: func() (any, error) {
-			return adapter.SeedEvidence(ctx)
+		Fn: func() (AgentPhaseResult, error) {
+			batches, err := adapter.SeedEvidence(ctx)
+			return AgentPhaseResult{Value: batches}, err
 		},
 		OnSuccess: func(value any) (map[string]any, error) {
 			batches, _ := value.([]EvidenceBatch)
@@ -48,7 +49,7 @@ func runCriticRound(ctx context.Context, adapter *execAdapter, session *Session,
 		InputSummary:  map[string]any{"proposal_summary": proposal.Summary},
 		Summarize:     summarizeEvidenceBatches,
 		Paths:         paths,
-		Fn: func() (any, error) {
+		Fn: func() (AgentPhaseResult, error) {
 			return adapter.CollectEvidence(ctx, CollectEvidenceArgs{Session: session, Round: round, Actor: critic, Phase: "re-explore"})
 		},
 		OnSuccess: func(value any) (map[string]any, error) {
@@ -74,7 +75,7 @@ func runCriticRound(ctx context.Context, adapter *execAdapter, session *Session,
 		InputSummary:  map[string]any{"proposal_summary": proposal.Summary},
 		Summarize:     summarizeFindings,
 		Paths:         paths,
-		Fn: func() (any, error) {
+		Fn: func() (AgentPhaseResult, error) {
 			return adapter.Review(ctx, ReviewArgs{
 				Session:        session,
 				Round:          round,
@@ -105,7 +106,7 @@ func runRound(ctx context.Context, adapter *execAdapter, session *Session, round
 		Adapter:       session.Adapter,
 		Summarize:     summarizeEvidenceBatches,
 		Paths:         paths,
-		Fn: func() (any, error) {
+		Fn: func() (AgentPhaseResult, error) {
 			return adapter.CollectEvidence(ctx, CollectEvidenceArgs{Session: session, Round: round, Actor: session.Chair, Phase: "explore"})
 		},
 		OnSuccess: func(value any) (map[string]any, error) {
@@ -130,7 +131,7 @@ func runRound(ctx context.Context, adapter *execAdapter, session *Session, round
 		Adapter:       session.Adapter,
 		Summarize:     summarizeProposal,
 		Paths:         paths,
-		Fn: func() (any, error) {
+		Fn: func() (AgentPhaseResult, error) {
 			return adapter.Propose(ctx, ProposeArgs{Session: session, Round: round})
 		},
 		OnSuccess: func(value any) (map[string]any, error) {
@@ -166,7 +167,7 @@ func runRound(ctx context.Context, adapter *execAdapter, session *Session, round
 		},
 		Summarize: summarizeVerdict,
 		Paths:     paths,
-		Fn: func() (any, error) {
+		Fn: func() (AgentPhaseResult, error) {
 			return adapter.Adjudicate(ctx, AdjudicateArgs{
 				Session:        session,
 				Round:          round,

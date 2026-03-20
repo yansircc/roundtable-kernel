@@ -23,6 +23,7 @@ func usage() {
   rtk run <session-id> <spec-path> [--force] [--text]
   rtk next <session-id> [--actor name]
   rtk apply <session-id> [result.json|-]
+  rtk stop <session-id>
   rtk wait <session-id> [--until change|turn|terminal] [--actor name] [--since updated_at] [--timeout-ms 600000]
   rtk show <session-id> [--text]
   rtk list [--text]
@@ -199,6 +200,20 @@ func main() {
 			failCommand("wait", false, err)
 		}
 		printJSON(nextEnvelope(paths, session, result))
+	case "stop":
+		parsed := rtk.ParseArgs(args[1:])
+		if len(parsed.Positionals) < 1 {
+			failCommand("stop", false, fmt.Errorf("stop requires a session id"))
+		}
+		session, err := rtk.StopSession(paths, parsed.Positionals[0])
+		if err != nil {
+			failCommand("stop", false, err)
+		}
+		_, nextResult, err := rtk.PeekNextStep(paths, session.ID, "")
+		if err != nil {
+			failCommand("stop", false, err)
+		}
+		printJSON(nextEnvelope(paths, session, nextResult))
 	case "serve":
 		port := parsePort(args[1:], 3133)
 		if err := rtk.Serve(paths, port); err != nil {

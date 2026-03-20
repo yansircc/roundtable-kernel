@@ -10,7 +10,7 @@ import (
 
 func terminalState(state string) bool {
 	switch state {
-	case "converged", "failed", "exhausted":
+	case "converged", "failed", "exhausted", "stopped":
 		return true
 	default:
 		return false

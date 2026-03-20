@@ -99,6 +99,9 @@ func buildAgentRequest(session *Session, round int, actor, phase string) (AgentR
 }
 
 func previewNextStep(session *Session) (*Step, string, bool, error) {
+	if session.Status.State == "stopped" {
+		return nil, "stopped", true, nil
+	}
 	if session.Status.State == "failed" {
 		return nil, "session_failed", true, nil
 	}
@@ -248,7 +251,7 @@ func advanceInternal(session *Session, paths Paths) error {
 			if err := RecordPhaseStart(session, round, session.Chair, "adjudicate", inputSummary); err != nil {
 				return err
 			}
-			if err := CompletePhase(session, round, session.Chair, "adjudicate", summarizeVerdict(nil), map[string]any{"verdict": nil}, 0, nil); err != nil {
+			if err := CompletePhase(session, round, session.Chair, "adjudicate", summarizeVerdict(nil), map[string]any{"verdict": nil}, nil, 0, nil); err != nil {
 				return err
 			}
 			if _, err := ApplyRound(session); err != nil {
@@ -395,6 +398,9 @@ func ApplyStep(paths Paths, sessionID string, input ApplyInput) (*Session, error
 	if err != nil {
 		return nil, err
 	}
+	if sessionStopped(session) {
+		return nil, ErrSessionStopped
+	}
 	if session.OpenRound == nil {
 		return nil, fmt.Errorf("session has no open round")
 	}
@@ -416,9 +422,11 @@ func ApplyStep(paths Paths, sessionID string, input ApplyInput) (*Session, error
 		return nil, fmt.Errorf("apply phase does not match the running phase")
 	}
 	durationMS := phaseDurationMS(running.StartedAt)
+	result := SemanticResult(input.Result)
+	usage := ResultUsage(input.Result)
 	switch running.Phase {
 	case "explore", "re-explore":
-		batches, err := EvidenceBatchesFromResult(input.Result, running.Actor, running.Phase)
+		batches, err := EvidenceBatchesFromResult(result, running.Actor, running.Phase)
 		if err != nil {
 			return nil, err
 		}
@@ -430,40 +438,40 @@ func ApplyStep(paths Paths, sessionID string, input ApplyInput) (*Session, error
 		if err := NoteRoundEvidence(session, round, added); err != nil {
 			return nil, err
 		}
-		if err := CompletePhase(session, round, running.Actor, running.Phase, summarizeEvidenceBatches(batches), map[string]any{"evidence_added": added}, durationMS, nil); err != nil {
+		if err := CompletePhase(session, round, running.Actor, running.Phase, summarizeEvidenceBatches(batches), map[string]any{"evidence_added": added}, usage, durationMS, nil); err != nil {
 			return nil, err
 		}
 	case "propose":
-		proposal, err := ProposalFromResult(input.Result)
+		proposal, err := ProposalFromResult(result)
 		if err != nil {
 			return nil, err
 		}
 		if err := RegisterProposal(session, round, proposal); err != nil {
 			return nil, err
 		}
-		if err := CompletePhase(session, round, running.Actor, running.Phase, summarizeProposal(proposal), map[string]any{"proposal": proposal}, durationMS, nil); err != nil {
+		if err := CompletePhase(session, round, running.Actor, running.Phase, summarizeProposal(proposal), map[string]any{"proposal": proposal}, usage, durationMS, nil); err != nil {
 			return nil, err
 		}
 	case "review":
-		findings, err := FindingsFromResult(input.Result)
+		findings, err := FindingsFromResult(result)
 		if err != nil {
 			return nil, err
 		}
 		if err := AppendRoundFindings(session, round, findings); err != nil {
 			return nil, err
 		}
-		if err := CompletePhase(session, round, running.Actor, running.Phase, summarizeFindings(findings), map[string]any{"findings_against_proposal": findings}, durationMS, nil); err != nil {
+		if err := CompletePhase(session, round, running.Actor, running.Phase, summarizeFindings(findings), map[string]any{"findings_against_proposal": findings}, usage, durationMS, nil); err != nil {
 			return nil, err
 		}
 	case "adjudicate":
-		verdict, err := VerdictFromResult(input.Result)
+		verdict, err := VerdictFromResult(result)
 		if err != nil {
 			return nil, err
 		}
 		if err := RegisterVerdict(session, round, verdict); err != nil {
 			return nil, err
 		}
-		if err := CompletePhase(session, round, running.Actor, running.Phase, summarizeVerdict(verdict), map[string]any{"verdict": verdict}, durationMS, nil); err != nil {
+		if err := CompletePhase(session, round, running.Actor, running.Phase, summarizeVerdict(verdict), map[string]any{"verdict": verdict}, usage, durationMS, nil); err != nil {
 			return nil, err
 		}
 	default:
