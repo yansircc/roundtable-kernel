@@ -316,6 +316,8 @@ Export the same self-contained skill into a plugin-style directory with:
 ./scripts/package-rtk-skill.sh /absolute/path/to/plugin/skills/rtk
 ```
 
+Publish the same skill into the `yansircc/agent-skills` marketplace with GitHub Actions via [.github/workflows/publish-skill.yml](/Users/yansir/code/52/roundtable-kernel/.github/workflows/publish-skill.yml). The workflow expects an `AGENT_SKILLS_PUSH_TOKEN` secret with direct push access to `agent-skills` and syncs the generated plugin into `main`.
+
 The skill still teaches agents to prefer `rtk` over custom polling or log scraping:
 
 - use `rtk show` for durable state
